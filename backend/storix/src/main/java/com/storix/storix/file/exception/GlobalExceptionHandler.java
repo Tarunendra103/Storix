@@ -24,10 +24,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
 
         }
+
+        @ExceptionHandler(EmailAlreadyExistsException.class)
+        public ResponseEntity<ErrorResponse> handleEmailAlreadyExists(
+                EmailAlreadyExistsException emailAlreadyExistsException){
+
+            ErrorResponse response = new ErrorResponse(
+                    HttpStatus.NOT_FOUND.value(),
+                   emailAlreadyExistsException.getMessage(),
+                    LocalDateTime.now()
+            );
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        }
+
         public record ErrorResponse(
                 int status,
                 String message,
                 LocalDateTime timeStamp
         ){
     }
+
 }

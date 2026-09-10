@@ -6,6 +6,8 @@ import com.storix.storix.file.dto.FileUpdateRequest;
 import com.storix.storix.file.entity.File;
 import com.storix.storix.file.exception.ResourceNotFoundException;
 import com.storix.storix.file.repository.FileRepository;
+import com.storix.storix.user.entity.User;
+import com.storix.storix.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -15,15 +17,20 @@ import java.util.List;
 @RequiredArgsConstructor
 public class FileService {
     private final FileRepository fileRepository;
+    private final UserRepository userRepository;
 
-    public List<FileResponse> getAllFiles(){
-        return fileRepository.findAll()
+    public List<FileResponse> getAllFiles(Long userId){
+        return fileRepository.findAllByUserId(userId)
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
     }
 
-    public FileResponse createFile(FileRequest fileRequest){
+    public FileResponse createFile(FileRequest fileRequest, Long userId){
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(()-> new ResourceNotFoundException(
+                        "user not found with id:" + userId));
         File file = File.builder()
                 .name(fileRequest.getName())
                 .mimeType(fileRequest.getMimeType())
@@ -41,14 +48,14 @@ public class FileService {
 
     }
 
-    public FileResponse getFileById(Long id){
-        File file = fileRepository.findById(id)
+    public FileResponse getFileById(Long id,Long userId){
+        File file = fileRepository.findByIdAndUserId(id,userId)
                 .orElseThrow( () ->new ResourceNotFoundException("File not found with id" + id));
         return mapToResponse(file);
     }
 
-    public FileResponse updateFile(Long id, FileUpdateRequest fileUpdateRequest){
-        File file = fileRepository.findById(id)
+    public FileResponse updateFile(Long id, FileUpdateRequest fileUpdateRequest,Long userId){
+        File file = fileRepository.findByIdAndUserId(id,userId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "resource not found with id" + id
                 ));
@@ -62,8 +69,8 @@ public class FileService {
 
     }
 
-    public void  deleteFile(Long id){
-        File file = fileRepository.findById(id)
+    public void  deleteFile(Long id,Long userId){
+        File file = fileRepository.findByIdAndUserId(id,userId)
                 .orElseThrow(()-> new ResourceNotFoundException(
                         "resource not found to delete with id" + id
                 ));

@@ -1,5 +1,6 @@
 package com.storix.storix.file.entity;
 
+import com.storix.storix.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -36,5 +37,9 @@ public class File {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
 }

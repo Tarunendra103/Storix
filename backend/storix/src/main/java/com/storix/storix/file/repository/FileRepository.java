@@ -3,6 +3,11 @@ package com.storix.storix.file.repository;
 import com.storix.storix.file.entity.File;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface FileRepository extends JpaRepository<File,Long> {
+import java.util.List;
+import java.util.Optional;
 
+public interface FileRepository extends JpaRepository<File,Long> {
+    List<File> findAllByUserId(Long userId);
+
+    Optional<File> findByIdAndUserId(Long id, Long userId);
 }
