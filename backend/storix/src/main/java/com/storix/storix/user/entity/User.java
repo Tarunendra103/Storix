@@ -1,5 +1,6 @@
 package com.storix.storix.user.entity;
 
+import com.storix.storix.account.entity.ConnectedAccount;
 import com.storix.storix.file.entity.File;
 import jakarta.persistence.*;
 import lombok.*;
@@ -25,6 +26,8 @@ public class User {
     private String password;
     @OneToMany(mappedBy = "user")
     private List<File> files;
+    @OneToMany(mappedBy = "user")
+    private List<ConnectedAccount> connectedAccount;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

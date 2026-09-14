@@ -1,5 +1,6 @@
 package com.storix.storix.file.entity;
 
+import com.storix.storix.common.Enums.StorageProvider;
 import com.storix.storix.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;

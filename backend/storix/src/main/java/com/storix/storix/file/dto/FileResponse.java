@@ -1,6 +1,6 @@
 package com.storix.storix.file.dto;
 
-import com.storix.storix.file.entity.StorageProvider;
+import com.storix.storix.common.Enums.StorageProvider;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
