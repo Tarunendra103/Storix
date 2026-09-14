@@ -33,6 +33,7 @@ public class FileService {
                         "user not found with id:" + userId));
         File file = File.builder()
                 .name(fileRequest.getName())
+                .user(user)
                 .mimeType(fileRequest.getMimeType())
                 .category(fileRequest.getCategory())
                 .size(fileRequest.getSize())
