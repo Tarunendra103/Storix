@@ -5,12 +5,12 @@ import com.storix.storix.account.entity.ConnectedAccount;
 import com.storix.storix.account.service.AccountService;
 import com.storix.storix.account.service.GoogleOAuthService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import java.net.URI;
 import java.util.List;
 
 @RestController
@@ -30,12 +30,32 @@ public class AccountController {
     }
 
     @GetMapping("/google/connect")
-    public String connectGoogle(Authentication authentication) {
+    public ResponseEntity<Void> connectGoogle(
+            Authentication authentication) {
 
         Long userId = Long.parseLong(authentication.getName());
+        String authorizationUrl=googleOAuthService.generateAuthorizationUrl(userId);
 
-        return googleOAuthService.generateAuthorizationUrl(userId);
+
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .location(URI.create(authorizationUrl))
+                        .build();
+    }
+
+    @GetMapping("/google/callback")
+    public AccountResponse googleCallback(
+            @RequestParam String code,
+            @RequestParam String state
+    ){
+        ConnectedAccount account = googleOAuthService.handleCallback(code,state);
+        return new AccountResponse(
+                account.getId()
+                ,account.getProvider()
+                ,account.getAccountEmail()
+                ,account.getTotalStorage(),
+                account.getUsedStorage()
+        );
     }
 }
 
-}
+

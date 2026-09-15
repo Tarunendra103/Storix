@@ -21,5 +21,11 @@ public interface ConnectedAccountRepository extends JpaRepository<ConnectedAccou
             String accountEmail
     );
 
+    Optional<ConnectedAccount>
+    findByUserIdAndProviderAndAccountEmail(
+            Long userId,
+            StorageProvider provider,
+            String accountEmail
+    );
 
 }
