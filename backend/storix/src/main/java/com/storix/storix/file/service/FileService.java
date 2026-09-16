@@ -1,10 +1,13 @@
 package com.storix.storix.file.service;
 
+import com.storix.storix.common.Enums.StorageProvider;
 import com.storix.storix.file.dto.FileRequest;
 import com.storix.storix.file.dto.FileResponse;
 import com.storix.storix.file.dto.FileUpdateRequest;
+import com.storix.storix.file.dto.ProviderFile;
 import com.storix.storix.file.entity.File;
 import com.storix.storix.file.exception.ResourceNotFoundException;
+import com.storix.storix.file.provider.google.GoogleDriveProvider;
 import com.storix.storix.file.repository.FileRepository;
 import com.storix.storix.user.entity.User;
 import com.storix.storix.user.repository.UserRepository;
@@ -18,13 +21,27 @@ import java.util.List;
 public class FileService {
     private final FileRepository fileRepository;
     private final UserRepository userRepository;
+    private final GoogleDriveProvider googleDriveProvider;
 
     public List<FileResponse> getAllFiles(Long userId){
-        return fileRepository.findAllByUserId(userId)
-                .stream()
-                .map(this::mapToResponse)
-                .toList();
-    }
+
+            return googleDriveProvider.listFiles(userId)
+                    .stream()
+                    .map(providerFile -> FileResponse.builder()
+                            .id(null)
+                            .name(providerFile.getName())
+                            .mimeType(providerFile.getMimeType())
+                            .category(providerFile.getCategory())
+                            .size(providerFile.getSize())
+                            .provider(StorageProvider.GOOGLE_DRIVE)
+                            .providerFileId(providerFile.getProviderFileId())
+                            .folderId(null)
+                            .favorite(false)
+                            .build()
+                    )
+                    .toList();
+        }
+
 
     public FileResponse createFile(FileRequest fileRequest, Long userId){
 
