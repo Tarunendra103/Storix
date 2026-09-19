@@ -18,5 +18,7 @@ public class FileResponse {
     private String providerFileId;
     private Long folderId;
     private boolean favorite;
+    private Long connectedAccountId;
+    private String accountEmail;
 
 }

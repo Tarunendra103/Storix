@@ -67,51 +67,64 @@ public class GoogleDriveProvider implements CloudStorageProvider {
     @Override
     public List<ProviderFile> listFiles(Long userId) {
 
-        try {
-            Drive drive = createDriveClient(userId);
+        List<ConnectedAccount> accounts =
+                connectedAccountRepository.findAllByUserId(userId)
+                        .stream()
+                        .filter(account ->
+                                account.getProvider()
+                                        == StorageProvider.GOOGLE_DRIVE
+                        )
+                        .toList();
 
-            FileList result = drive.files()
-                    .list()
-                    .setPageSize(100)
-                    .setFields(
-                            "files(id,name,mimeType,size,parents,"
-                                    + "createdTime,modifiedTime)"
-                    )
-                    .execute();
+        List<ProviderFile> allFiles = new ArrayList<>();
 
-            List<ProviderFile> files = new ArrayList<>();
+        for (ConnectedAccount account : accounts) {
 
-            for (com.google.api.services.drive.model.File file
-                    : result.getFiles()) {
+            Drive drive = createDriveClient(account);
 
-                files.add(
-                        ProviderFile.builder()
-                                .providerFileId(file.getId())
-                                .name(file.getName())
-                                .mimeType(file.getMimeType())
-                                .size(file.getSize())
-                                .category(
-                                        determineCategory(
-                                                file.getMimeType()
-                                        )
-                                )
-                                .folderId(
-                                        file.getParents() != null
-                                                ? file.getParents().get(0)
-                                                : null
-                                )
-                                .build()
+            try {
+                FileList result = drive.files()
+                        .list()
+                        .setPageSize(100)
+                        .setFields(
+                                "files(id,name,mimeType,size,parents,"
+                                        + "createdTime,modifiedTime)"
+                        )
+                        .execute();
+
+                for (com.google.api.services.drive.model.File file
+                        : result.getFiles()) {
+
+                    allFiles.add(
+                            ProviderFile.builder()
+                                    .providerFileId(file.getId())
+                                    .name(file.getName())
+                                    .mimeType(file.getMimeType())
+                                    .size(file.getSize())
+                                    .category(
+                                            determineCategory(
+                                                    file.getMimeType()
+                                            )
+                                    )
+                                    .providerFolderId(
+                                            file.getParents() != null
+                                                    ? file.getParents().get(0)
+                                                    : null
+                                    )
+                                    .connectedAccountId(account.getId())
+                                    .build()
+                    );
+                }
+
+            } catch (IOException e) {
+                throw new RuntimeException(
+                        "Failed to fetch Google Drive files",
+                        e
                 );
             }
-
-            return files;
-
-        } catch (IOException e) {
-            throw new RuntimeException(
-                    "Failed to fetch Google Drive files",
-                    e
-            );
         }
+
+        return allFiles;
     }
 
     private String determineCategory(String mimeType) {

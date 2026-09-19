@@ -59,4 +59,14 @@ public class FileController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/sync")
+    public ResponseEntity<Void> syncFiles(
+            Authentication authentication
+    ) {
+        Long userId = Long.parseLong(authentication.getName());
+
+        fileService.syncGoogleDriveFiles(userId);
+
+        return ResponseEntity.ok().build();
+    }
 }

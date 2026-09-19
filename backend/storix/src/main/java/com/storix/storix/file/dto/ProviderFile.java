@@ -13,5 +13,6 @@ public class ProviderFile {
     private String mimeType;
     private Long size;
     private String category;
-    private String folderId;
+    private String providerFolderId;
+    private Long connectedAccountId;
 }

@@ -1,5 +1,6 @@
 package com.storix.storix.file.repository;
 
+import com.storix.storix.common.Enums.StorageProvider;
 import com.storix.storix.file.entity.File;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -10,4 +11,10 @@ public interface FileRepository extends JpaRepository<File,Long> {
     List<File> findAllByUserId(Long userId);
 
     Optional<File> findByIdAndUserId(Long id, Long userId);
+
+    Optional<File> findByUserIdAndProviderAndProviderFileId(
+            Long userId,
+            StorageProvider provider,
+            String providerFileId
+    );
 }
