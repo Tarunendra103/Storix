@@ -1,8 +1,6 @@
 package com.storix.storix.file.controller;
 
-import com.storix.storix.file.dto.FileRequest;
-import com.storix.storix.file.dto.FileResponse;
-import com.storix.storix.file.dto.FileUpdateRequest;
+import com.storix.storix.file.dto.*;
 import com.storix.storix.file.entity.File;
 import com.storix.storix.file.provider.google.GoogleDriveProvider;
 import com.storix.storix.file.service.FileService;
@@ -159,6 +157,43 @@ public class FileController {
 
         return ResponseEntity.ok(
                 fileService.getFolderFiles(
+                        userId,
+                        connectedAccountId,
+                        providerFolderId
+                )
+        );
+    }
+
+    @GetMapping("/folders")
+    public ResponseEntity<List<FolderResponse>> getFolders(
+            @RequestParam Long connectedAccountId,
+            Authentication authentication
+    ) {
+
+        Long userId =
+                Long.parseLong(authentication.getName());
+
+        return ResponseEntity.ok(
+                fileService.getFolders(
+                        userId,
+                        connectedAccountId
+                )
+        );
+    }
+
+
+    @GetMapping("/breadcrumbs")
+    public ResponseEntity<List<BreadcrumbResponse>> getBreadcrumbs(
+            @RequestParam Long connectedAccountId,
+            @RequestParam(required = false) String providerFolderId,
+            Authentication authentication
+    ) {
+
+        Long userId =
+                Long.parseLong(authentication.getName());
+
+        return ResponseEntity.ok(
+                fileService.getBreadcrumbs(
                         userId,
                         connectedAccountId,
                         providerFolderId

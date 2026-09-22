@@ -54,77 +54,68 @@ public class GoogleDriveProvider implements CloudStorageProvider {
     }
 
     @Override
-    public List<ProviderFile> listFiles(Long userId) {
+    public List<ProviderFile> listFiles(ConnectedAccount account) {
 
-        List<ConnectedAccount> accounts =
-                connectedAccountRepository.findAllByUserId(userId)
-                        .stream()
-                        .filter(account ->
-                                account.getProvider()
-                                        == StorageProvider.GOOGLE_DRIVE)
-                        .toList();
+        Drive drive = createDriveClient(account);
 
-        List<ProviderFile> allFiles = new ArrayList<>();
+        List<ProviderFile> files = new ArrayList<>();
 
-        for (ConnectedAccount account : accounts) {
+        try {
 
-            Drive drive = createDriveClient(account);
+            String pageToken = null;
 
-            try {
+            do {
 
-                String pageToken = null;
+                FileList result = drive.files()
+                        .list()
+                        .setPageSize(100)
+                        .setPageToken(pageToken)
+                        .setQ("trashed = false")
+                        .setFields(
+                                "nextPageToken," +
+                                        "files(id,name,mimeType,size,parents," +
+                                        "createdTime,modifiedTime)"
+                        )
+                        .execute();
 
-                do {
+                for (File file : result.getFiles()) {
 
-                    FileList result = drive.files()
-                            .list()
-                            .setPageSize(100)
-                            .setPageToken(pageToken)
-                            .setQ("trashed = false")
-                            .setFields(
-                                    "nextPageToken," +
-                                            "files(id,name,mimeType,size,parents," +
-                                            "createdTime,modifiedTime)"
-                            )
-                            .execute();
+                    files.add(
+                            ProviderFile.builder()
+                                    .providerFileId(file.getId())
+                                    .name(file.getName())
+                                    .mimeType(file.getMimeType())
+                                    .size(file.getSize())
+                                    .category(
+                                            determineCategory(
+                                                    file.getMimeType()
+                                            )
+                                    )
+                                    .providerFolderId(
+                                            file.getParents() != null
+                                                    ? file.getParents().get(0)
+                                                    : null
+                                    )
+                                    .connectedAccountId(
+                                            account.getId()
+                                    )
+                                    .build()
+                    );
+                }
 
-                    for (File file : result.getFiles()) {
+                pageToken = result.getNextPageToken();
 
-                        allFiles.add(
-                                ProviderFile.builder()
-                                        .providerFileId(file.getId())
-                                        .name(file.getName())
-                                        .mimeType(file.getMimeType())
-                                        .size(file.getSize())
-                                        .category(
-                                                determineCategory(
-                                                        file.getMimeType()
-                                                )
-                                        )
-                                        .providerFolderId(
-                                                file.getParents() != null
-                                                        ? file.getParents().get(0)
-                                                        : null
-                                        )
-                                        .connectedAccountId(account.getId())
-                                        .build()
-                        );
-                    }
+            } while (pageToken != null);
 
-                    pageToken = result.getNextPageToken();
+            return files;
 
-                } while (pageToken != null);
+        } catch (IOException e) {
 
-            } catch (IOException e) {
-
-                throw new RuntimeException(
-                        "Failed to fetch Google Drive files",
-                        e
-                );
-            }
+            throw new RuntimeException(
+                    "Failed to fetch Google Drive files",
+                    e
+            );
         }
-
-        return allFiles;
     }
     private String determineCategory(String mimeType) {
 
@@ -414,9 +405,22 @@ public class GoogleDriveProvider implements CloudStorageProvider {
 
         try {
 
-            String query =
-                    "'" + providerFolderId + "' in parents " +
-                            "and trashed = false";
+            String query;
+
+            if (providerFolderId == null) {
+
+                String rootId = getRootFolderId(account);
+
+                query =
+                        "'" + rootId + "' in parents " +
+                                "and trashed = false";
+
+            } else {
+
+                query =
+                        "'" + providerFolderId + "' in parents " +
+                                "and trashed = false";
+            }
 
             FileList result = drive.files()
                     .list()
@@ -456,6 +460,40 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     e
             );
         }
+    }
+
+    private String getRootFolderId(ConnectedAccount account) {
+
+        Drive drive = createDriveClient(account);
+
+        try {
+            return drive.files()
+                    .get("root")
+                    .setFields("id")
+                    .execute()
+                    .getId();
+
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Failed to get Google Drive root folder",
+                    e
+            );
+        }
+    }
+    public String getRootFolderIdForAccount(
+            Long connectedAccountId
+    ) {
+
+        ConnectedAccount account =
+                connectedAccountRepository
+                        .findById(connectedAccountId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Connected Google account not found"
+                                )
+                        );
+
+        return getRootFolderId(account);
     }
     }
 

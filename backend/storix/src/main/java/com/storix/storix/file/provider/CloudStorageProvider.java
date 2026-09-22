@@ -1,5 +1,6 @@
 package com.storix.storix.file.provider;
 
+import com.storix.storix.account.entity.ConnectedAccount;
 import com.storix.storix.file.dto.ProviderFile;
 import com.storix.storix.file.entity.File;
 
@@ -7,7 +8,8 @@ import java.io.InputStream;
 import java.util.List;
 
 public interface CloudStorageProvider {
-    List<ProviderFile> listFiles(Long userId);
+//    List<ProviderFile> listFiles(Long userId);
+    List<ProviderFile> listFiles(ConnectedAccount account);
 
     ProviderFile getFile(Long userId, String providerFileId);
 

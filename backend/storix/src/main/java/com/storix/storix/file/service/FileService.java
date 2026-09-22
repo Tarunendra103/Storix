@@ -3,10 +3,7 @@ package com.storix.storix.file.service;
 import com.storix.storix.account.entity.ConnectedAccount;
 import com.storix.storix.account.repository.ConnectedAccountRepository;
 import com.storix.storix.common.Enums.StorageProvider;
-import com.storix.storix.file.dto.FileRequest;
-import com.storix.storix.file.dto.FileResponse;
-import com.storix.storix.file.dto.FileUpdateRequest;
-import com.storix.storix.file.dto.ProviderFile;
+import com.storix.storix.file.dto.*;
 import com.storix.storix.file.entity.File;
 import com.storix.storix.file.exception.ResourceNotFoundException;
 import com.storix.storix.file.provider.google.GoogleDriveProvider;
@@ -20,6 +17,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,28 +39,28 @@ public class FileService {
         }
 
 
-    public FileResponse createFile(FileRequest fileRequest, Long userId){
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(()-> new ResourceNotFoundException(
-                        "user not found with id:" + userId));
-        File file = File.builder()
-                .name(fileRequest.getName())
-                .user(user)
-                .mimeType(fileRequest.getMimeType())
-                .category(fileRequest.getCategory())
-                .size(fileRequest.getSize())
-                .provider(fileRequest.getProvider())
-                .providerFileId(fileRequest.getProviderFileId())
-                .folderId(fileRequest.getFolderId())
-                .favorite(fileRequest.isFavorite())
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .build();
-        File savedFile = fileRepository.save(file);
-        return mapToResponse(savedFile);
-
-    }
+//    public FileResponse createFile(FileRequest fileRequest, Long userId){
+//
+//        User user = userRepository.findById(userId)
+//                .orElseThrow(()-> new ResourceNotFoundException(
+//                        "user not found with id:" + userId));
+//        File file = File.builder()
+//                .name(fileRequest.getName())
+//                .user(user)
+//                .mimeType(fileRequest.getMimeType())
+//                .category(fileRequest.getCategory())
+//                .size(fileRequest.getSize())
+//                .provider(fileRequest.getProvider())
+//                .providerFileId(fileRequest.getProviderFileId())
+//                .folderId(fileRequest.getFolderId())
+//                .favorite(fileRequest.isFavorite())
+//                .createdAt(LocalDateTime.now())
+//                .updatedAt(LocalDateTime.now())
+//                .build();
+//        File savedFile = fileRepository.save(file);
+//        return mapToResponse(savedFile);
+//
+//    }
 
     public FileResponse getFileById(Long id,Long userId){
         File file = fileRepository.findByIdAndUserId(id,userId)
@@ -105,7 +104,7 @@ public class FileService {
 
             // 1. Get files currently present in this Google Drive
             List<ProviderFile> providerFiles =
-                    googleDriveProvider.listFiles(userId);
+                    googleDriveProvider.listFiles(account);
 
             // 2. Add/update files in MySQL
             for (ProviderFile providerFile : providerFiles) {
@@ -337,11 +336,21 @@ public class FileService {
                         )
                 );
 
+        String folderId = providerFolderId;
+
+        if (folderId == null) {
+            folderId =
+                    googleDriveProvider
+                            .getRootFolderIdForAccount(
+                                    connectedAccountId
+                            );
+        }
+
         return fileRepository
                 .findAllByUserIdAndConnectedAccountIdAndProviderFolderId(
                         userId,
                         connectedAccountId,
-                        providerFolderId
+                        folderId
                 )
                 .stream()
                 .map(this::mapToResponse)
@@ -365,6 +374,87 @@ public class FileService {
                 .accountEmail(file.getConnectedAccount().getAccountEmail())
 
                 .build();
+    }
+
+    public List<FolderResponse> getFolders(
+            Long userId,
+            Long connectedAccountId
+    ) {
+
+        return fileRepository
+                .findAllByUserIdAndConnectedAccountIdAndCategory(
+                        userId,
+                        connectedAccountId,
+                        "FOLDERS"
+                )
+                .stream()
+                .map(file -> new FolderResponse(
+                        file.getId(),
+                        file.getName(),
+                        file.getProviderFileId(),
+                        file.getProviderFolderId(),
+                        file.getConnectedAccount().getId()
+                ))
+                .toList();
+    }
+
+    public List<BreadcrumbResponse> getBreadcrumbs(
+            Long userId,
+            Long connectedAccountId,
+            String providerFolderId
+    ) {
+
+        List<File> folders =
+                fileRepository
+                        .findAllByUserIdAndConnectedAccountIdAndCategory(
+                                userId,
+                                connectedAccountId,
+                                "FOLDERS"
+                        );
+
+        List<BreadcrumbResponse> breadcrumbs =
+                new ArrayList<>();
+
+        String currentFolderId = providerFolderId;
+
+        while (currentFolderId != null) {
+
+            String finalFolderId = currentFolderId;
+
+            File currentFolder = folders.stream()
+                    .filter(folder ->
+                            folder.getProviderFileId()
+                                    .equals(finalFolderId)
+                    )
+                    .findFirst()
+                    .orElse(null);
+
+            if (currentFolder == null) {
+                break;
+            }
+
+            breadcrumbs.add(
+                    new BreadcrumbResponse(
+                            currentFolder.getName(),
+                            currentFolder.getProviderFileId()
+                    )
+            );
+
+            currentFolderId =
+                    currentFolder.getProviderFolderId();
+        }
+
+        Collections.reverse(breadcrumbs);
+
+        breadcrumbs.add(
+                0,
+                new BreadcrumbResponse(
+                        "My Drive",
+                        null
+                )
+        );
+
+        return breadcrumbs;
     }
 
 }
