@@ -20,5 +20,6 @@ public class FileResponse {
     private boolean favorite;
     private Long connectedAccountId;
     private String accountEmail;
+    private String providerFolderId;
 
 }

@@ -28,6 +28,10 @@ public interface CloudStorageProvider {
             String mimeType,
             InputStream inputStream
     );
+    List<ProviderFile> listFiles(
+            Long connectedAccountId,
+            String providerFolderId
+    );
 
     ProviderFile createFolder(
             Long userId,

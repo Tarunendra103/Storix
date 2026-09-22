@@ -32,4 +32,9 @@ public interface FileRepository extends JpaRepository<File,Long> {
             Long userId,
             String name
     );
+    List<File> findAllByUserIdAndConnectedAccountIdAndProviderFolderId(
+            Long userId,
+            Long connectedAccountId,
+            String providerFolderId
+    );
 }

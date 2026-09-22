@@ -61,8 +61,7 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                         .stream()
                         .filter(account ->
                                 account.getProvider()
-                                        == StorageProvider.GOOGLE_DRIVE
-                        )
+                                        == StorageProvider.GOOGLE_DRIVE)
                         .toList();
 
         List<ProviderFile> allFiles = new ArrayList<>();
@@ -72,40 +71,52 @@ public class GoogleDriveProvider implements CloudStorageProvider {
             Drive drive = createDriveClient(account);
 
             try {
-                FileList result = drive.files()
-                        .list()
-                        .setPageSize(100)
-                        .setFields(
-                                "files(id,name,mimeType,size,parents,"
-                                        + "createdTime,modifiedTime)"
-                        )
-                        .execute();
 
-                for (com.google.api.services.drive.model.File file
-                        : result.getFiles()) {
+                String pageToken = null;
 
-                    allFiles.add(
-                            ProviderFile.builder()
-                                    .providerFileId(file.getId())
-                                    .name(file.getName())
-                                    .mimeType(file.getMimeType())
-                                    .size(file.getSize())
-                                    .category(
-                                            determineCategory(
-                                                    file.getMimeType()
-                                            )
-                                    )
-                                    .providerFolderId(
-                                            file.getParents() != null
-                                                    ? file.getParents().get(0)
-                                                    : null
-                                    )
-                                    .connectedAccountId(account.getId())
-                                    .build()
-                    );
-                }
+                do {
+
+                    FileList result = drive.files()
+                            .list()
+                            .setPageSize(100)
+                            .setPageToken(pageToken)
+                            .setQ("trashed = false")
+                            .setFields(
+                                    "nextPageToken," +
+                                            "files(id,name,mimeType,size,parents," +
+                                            "createdTime,modifiedTime)"
+                            )
+                            .execute();
+
+                    for (File file : result.getFiles()) {
+
+                        allFiles.add(
+                                ProviderFile.builder()
+                                        .providerFileId(file.getId())
+                                        .name(file.getName())
+                                        .mimeType(file.getMimeType())
+                                        .size(file.getSize())
+                                        .category(
+                                                determineCategory(
+                                                        file.getMimeType()
+                                                )
+                                        )
+                                        .providerFolderId(
+                                                file.getParents() != null
+                                                        ? file.getParents().get(0)
+                                                        : null
+                                        )
+                                        .connectedAccountId(account.getId())
+                                        .build()
+                        );
+                    }
+
+                    pageToken = result.getNextPageToken();
+
+                } while (pageToken != null);
 
             } catch (IOException e) {
+
                 throw new RuntimeException(
                         "Failed to fetch Google Drive files",
                         e
@@ -115,7 +126,6 @@ public class GoogleDriveProvider implements CloudStorageProvider {
 
         return allFiles;
     }
-
     private String determineCategory(String mimeType) {
 
         if (mimeType == null) {
@@ -335,28 +345,117 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                 "Storage information not implemented yet"
         );
     }
-        public List<String> getExistingFileIds(ConnectedAccount account) {
+    public List<String> getExistingFileIds(
+            ConnectedAccount account
+    ) {
 
-            Drive drive = createDriveClient(account);
+        Drive drive = createDriveClient(account);
 
-            try {
+        List<String> fileIds = new ArrayList<>();
+
+        try {
+
+            String pageToken = null;
+
+            do {
+
                 FileList result = drive.files()
                         .list()
                         .setPageSize(100)
-                        .setFields("files(id)")
+                        .setPageToken(pageToken)
+                        .setQ("trashed = false")
+                        .setFields("nextPageToken,files(id)")
                         .execute();
 
-                return result.getFiles()
-                        .stream()
-                        .map(com.google.api.services.drive.model.File::getId)
-                        .toList();
-
-            } catch (IOException e) {
-                throw new RuntimeException(
-                        "Failed to fetch Google Drive file IDs",
-                        e
+                fileIds.addAll(
+                        result.getFiles()
+                                .stream()
+                                .map(File::getId)
+                                .toList()
                 );
-            }
+
+                pageToken = result.getNextPageToken();
+
+            } while (pageToken != null);
+
+            return fileIds;
+
+        } catch (IOException e) {
+
+            throw new RuntimeException(
+                    "Failed to fetch Google Drive file IDs",
+                    e
+            );
         }
+    }
+
+
+    @Override
+    public List<ProviderFile> listFiles(
+            Long connectedAccountId,
+            String providerFolderId
+    ) {
+
+        ConnectedAccount account =
+                connectedAccountRepository.findById(connectedAccountId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Connected Google account not found"
+                                )
+                        );
+
+        if (account.getProvider() != StorageProvider.GOOGLE_DRIVE) {
+            throw new IllegalArgumentException(
+                    "Connected account is not Google Drive"
+            );
+        }
+
+        Drive drive = createDriveClient(account);
+
+        try {
+
+            String query =
+                    "'" + providerFolderId + "' in parents " +
+                            "and trashed = false";
+
+            FileList result = drive.files()
+                    .list()
+                    .setQ(query)
+                    .setPageSize(100)
+                    .setFields(
+                            "files(id,name,mimeType,size,parents,createdTime,modifiedTime)"
+                    )
+                    .execute();
+
+            return result.getFiles()
+                    .stream()
+                    .map(file -> ProviderFile.builder()
+                            .providerFileId(file.getId())
+                            .name(file.getName())
+                            .mimeType(file.getMimeType())
+                            .size(file.getSize())
+                            .category(
+                                    determineCategory(
+                                            file.getMimeType()
+                                    )
+                            )
+                            .providerFolderId(
+                                    file.getParents() != null
+                                            ? file.getParents().get(0)
+                                            : null
+                            )
+                            .connectedAccountId(account.getId())
+                            .build()
+                    )
+                    .toList();
+
+        } catch (IOException e) {
+
+            throw new RuntimeException(
+                    "Failed to fetch files from Google Drive folder",
+                    e
+            );
+        }
+    }
     }
 

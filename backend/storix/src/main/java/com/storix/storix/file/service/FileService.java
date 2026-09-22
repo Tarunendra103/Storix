@@ -320,6 +320,34 @@ public class FileService {
                 .map(this::mapToResponse)
                 .toList();
     }
+    public List<FileResponse> getFolderFiles(
+            Long userId,
+            Long connectedAccountId,
+            String providerFolderId
+    ) {
+
+        connectedAccountRepository
+                .findByIdAndUserId(
+                        connectedAccountId,
+                        userId
+                )
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Connected account not found"
+                        )
+                );
+
+        return fileRepository
+                .findAllByUserIdAndConnectedAccountIdAndProviderFolderId(
+                        userId,
+                        connectedAccountId,
+                        providerFolderId
+                )
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
     private FileResponse mapToResponse(File file) {
 
         return FileResponse.builder()
@@ -330,6 +358,7 @@ public class FileService {
                 .size(file.getSize())
                 .provider(file.getProvider())
                 .providerFileId(file.getProviderFileId())
+                .providerFolderId(file.getProviderFolderId())
                 .folderId(file.getFolderId())
                 .favorite(file.isFavorite())
                 .connectedAccountId(file.getConnectedAccount().getId())

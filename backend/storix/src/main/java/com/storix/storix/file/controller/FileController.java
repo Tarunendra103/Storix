@@ -147,5 +147,24 @@ public class FileController {
         return ResponseEntity.ok(files);
     }
 
+    @GetMapping("/folder")
+    public ResponseEntity<List<FileResponse>> getFolderFiles(
+            @RequestParam Long connectedAccountId,
+            @RequestParam String providerFolderId,
+            Authentication authentication
+    ) {
+
+        Long userId =
+                Long.parseLong(authentication.getName());
+
+        return ResponseEntity.ok(
+                fileService.getFolderFiles(
+                        userId,
+                        connectedAccountId,
+                        providerFolderId
+                )
+        );
+    }
+
 
 }
