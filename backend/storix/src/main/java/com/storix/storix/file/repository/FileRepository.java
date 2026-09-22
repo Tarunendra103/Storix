@@ -17,4 +17,19 @@ public interface FileRepository extends JpaRepository<File,Long> {
             StorageProvider provider,
             String providerFileId
     );
+
+    Optional<File> findByUserIdAndConnectedAccountIdAndProviderFileId(
+            Long userId,
+            Long connectedAccountId,
+            String providerFileId
+    );
+    List<File> findAllByUserIdAndConnectedAccountId(
+            Long userId,
+            Long connectedAccountId
+    );
+
+    List<File> findAllByUserIdAndNameContainingIgnoreCase(
+            Long userId,
+            String name
+    );
 }

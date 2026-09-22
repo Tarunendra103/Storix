@@ -1,5 +1,6 @@
 package com.storix.storix.file.service;
 
+import com.storix.storix.account.entity.ConnectedAccount;
 import com.storix.storix.account.repository.ConnectedAccountRepository;
 import com.storix.storix.common.Enums.StorageProvider;
 import com.storix.storix.file.dto.FileRequest;
@@ -14,7 +15,10 @@ import com.storix.storix.user.entity.User;
 import com.storix.storix.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -80,13 +84,6 @@ public class FileService {
 
     }
 
-    public void  deleteFile(Long id,Long userId){
-        File file = fileRepository.findByIdAndUserId(id,userId)
-                .orElseThrow(()-> new ResourceNotFoundException(
-                        "resource not found to delete with id" + id
-                ));
-        fileRepository.delete(file);
-    }
 
     public void syncGoogleDriveFiles(Long userId) {
 
@@ -95,64 +92,234 @@ public class FileService {
                         new ResourceNotFoundException("User not found")
                 );
 
-        List<ProviderFile> providerFiles =
-                googleDriveProvider.listFiles(userId);
-
-        for (ProviderFile providerFile : providerFiles) {
-
-            Optional<File> existingFile =
-                    fileRepository.findByUserIdAndProviderAndProviderFileId(
-                            userId,
-                            StorageProvider.GOOGLE_DRIVE,
-                            providerFile.getProviderFileId()
-                    );
-
-            if (existingFile.isPresent()) {
-
-                File file = existingFile.get();
-
-                file.setName(providerFile.getName());
-                file.setMimeType(providerFile.getMimeType());
-                file.setSize(providerFile.getSize());
-                file.setCategory(providerFile.getCategory());
-                file.setUpdatedAt(LocalDateTime.now());
-                file.setProviderFolderId(
-                        providerFile.getProviderFolderId()
-                );
-
-                fileRepository.save(file);
-
-            } else {
-
-                File file = File.builder()
-                        .user(user)
-                        .connectedAccount(
-                                connectedAccountRepository.findById(
-                                        providerFile.getConnectedAccountId()
-                                ).orElseThrow(() ->
-                                        new ResourceNotFoundException(
-                                                "Connected account not found"
-                                        )
-                                )
+        List<ConnectedAccount> accounts =
+                connectedAccountRepository.findAllByUserId(userId)
+                        .stream()
+                        .filter(account ->
+                                account.getProvider()
+                                        == StorageProvider.GOOGLE_DRIVE
                         )
-                        .name(providerFile.getName())
-                        .mimeType(providerFile.getMimeType())
-                        .category(providerFile.getCategory())
-                        .size(providerFile.getSize())
-                        .provider(StorageProvider.GOOGLE_DRIVE)
-                        .providerFileId(providerFile.getProviderFileId())
-                        .providerFolderId(providerFile.getProviderFolderId())
-                        .favorite(false)
-                        .createdAt(LocalDateTime.now())
-                        .updatedAt(LocalDateTime.now())
-                        .build();
+                        .toList();
 
-                fileRepository.save(file);
+        for (ConnectedAccount account : accounts) {
+
+            // 1. Get files currently present in this Google Drive
+            List<ProviderFile> providerFiles =
+                    googleDriveProvider.listFiles(userId);
+
+            // 2. Add/update files in MySQL
+            for (ProviderFile providerFile : providerFiles) {
+
+                Optional<File> existingFile =
+                        fileRepository
+                                .findByUserIdAndConnectedAccountIdAndProviderFileId(
+                                        userId,
+                                        providerFile.getConnectedAccountId(),
+                                        providerFile.getProviderFileId()
+                                );
+
+                if (existingFile.isPresent()) {
+
+                    File file = existingFile.get();
+
+                    file.setName(providerFile.getName());
+                    file.setMimeType(providerFile.getMimeType());
+                    file.setCategory(providerFile.getCategory());
+                    file.setSize(providerFile.getSize());
+                    file.setProviderFolderId(
+                            providerFile.getProviderFolderId()
+                    );
+                    file.setUpdatedAt(LocalDateTime.now());
+
+                    fileRepository.save(file);
+
+                } else {
+
+                    ConnectedAccount connectedAccount =
+                            connectedAccountRepository.findById(
+                                    providerFile.getConnectedAccountId()
+                            ).orElseThrow(() ->
+                                    new ResourceNotFoundException(
+                                            "Connected account not found"
+                                    )
+                            );
+
+                    File file = File.builder()
+                            .user(user)
+                            .connectedAccount(connectedAccount)
+                            .name(providerFile.getName())
+                            .mimeType(providerFile.getMimeType())
+                            .category(providerFile.getCategory())
+                            .size(providerFile.getSize())
+                            .provider(StorageProvider.GOOGLE_DRIVE)
+                            .providerFileId(
+                                    providerFile.getProviderFileId()
+                            )
+                            .providerFolderId(
+                                    providerFile.getProviderFolderId()
+                            )
+                            .favorite(false)
+                            .createdAt(LocalDateTime.now())
+                            .updatedAt(LocalDateTime.now())
+                            .build();
+
+                    fileRepository.save(file);
+                }
             }
 
+            // 3. Get IDs that currently exist in this Google Drive
+            List<String> existingProviderFileIds =
+                    googleDriveProvider.getExistingFileIds(account);
+
+            // 4. Get files Storix has for this Google account
+            List<File> storedFiles =
+                    fileRepository.findAllByUserIdAndConnectedAccountId(
+                            userId,
+                            account.getId()
+                    );
+
+            // 5. Delete local records that no longer exist on Google
+            for (File storedFile : storedFiles) {
+
+                if (!existingProviderFileIds.contains(
+                        storedFile.getProviderFileId()
+                )) {
+                    fileRepository.delete(storedFile);
+                }
+            }
         }
     }
 
+    public File getFileEntity(Long fileId, Long userId) {
+
+        return fileRepository.findByIdAndUserId(fileId, userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "File not found"
+                        )
+                );
+    }
+
+
+    public void deleteFile(Long fileId, Long userId) {
+
+        File file = fileRepository.findByIdAndUserId(
+                fileId,
+                userId
+        ).orElseThrow(() ->
+                new ResourceNotFoundException(
+                        "File not found"
+                )
+        );
+
+        googleDriveProvider.deleteFile(
+                file.getConnectedAccount().getId(),
+                file.getProviderFileId()
+        );
+
+        fileRepository.delete(file);
+    }
+
+
+    public FileResponse uploadFile(
+            Long userId,
+            Long connectedAccountId,
+            MultipartFile multipartFile
+    ) {
+
+        if (multipartFile.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "File cannot be empty"
+            );
+        }
+
+        ConnectedAccount account =
+                connectedAccountRepository
+                        .findByIdAndUserId(
+                                connectedAccountId,
+                                userId
+                        )
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Connected account not found"
+                                )
+                        );
+
+        if (account.getProvider() != StorageProvider.GOOGLE_DRIVE) {
+            throw new IllegalArgumentException(
+                    "Only Google Drive upload is supported currently"
+            );
+        }
+
+        try (InputStream inputStream =
+                     multipartFile.getInputStream()) {
+
+            ProviderFile providerFile =
+                    googleDriveProvider.uploadFile(
+                            connectedAccountId,
+                            multipartFile.getOriginalFilename(),
+                            multipartFile.getContentType(),
+                            inputStream
+                    );
+
+            File file = File.builder()
+                    .name(providerFile.getName())
+                    .mimeType(providerFile.getMimeType())
+                    .category(providerFile.getCategory())
+                    .size(providerFile.getSize())
+                    .provider(StorageProvider.GOOGLE_DRIVE)
+                    .providerFileId(providerFile.getProviderFileId())
+                    .providerFolderId(providerFile.getProviderFolderId())
+                    .connectedAccount(account)
+                    .user(account.getUser())
+                    .favorite(false)
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .build();
+
+            File savedFile = fileRepository.save(file);
+
+            return mapToResponse(savedFile);
+
+        } catch (IOException e) {
+
+            throw new RuntimeException(
+                    "Failed to read uploaded file",
+                    e
+            );
+        }
+    }
+
+
+    public byte[] downloadFile(Long fileId, Long userId) {
+
+        File file = fileRepository.findByIdAndUserId(fileId, userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("File not found")
+                );
+
+        return googleDriveProvider.downloadFile(
+                file.getConnectedAccount().getId(),
+                file.getProviderFileId()
+        );
+    }
+
+
+
+    public List<FileResponse> searchFiles(
+            Long userId,
+            String query
+    ) {
+
+        return fileRepository
+                .findAllByUserIdAndNameContainingIgnoreCase(
+                        userId,
+                        query
+                )
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
     private FileResponse mapToResponse(File file) {
 
         return FileResponse.builder()

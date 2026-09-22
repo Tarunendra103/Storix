@@ -3,6 +3,7 @@ package com.storix.storix.file.provider;
 import com.storix.storix.file.dto.ProviderFile;
 import com.storix.storix.file.entity.File;
 
+import java.io.InputStream;
 import java.util.List;
 
 public interface CloudStorageProvider {
@@ -10,14 +11,22 @@ public interface CloudStorageProvider {
 
     ProviderFile getFile(Long userId, String providerFileId);
 
-    byte[] downloadFile(Long userId, String providerFileId);
+    byte[] downloadFile( Long connectedAccountId,
+                         String providerFileId);
 
-    void deleteFile(Long userId, String providerFileId);
+    void deleteFile(Long connectedAccountId, String providerFileId);
 
     ProviderFile renameFile(
             Long userId,
             String providerFileId,
             String newName
+    );
+
+    ProviderFile uploadFile(
+            Long connectedAccountId,
+            String fileName,
+            String mimeType,
+            InputStream inputStream
     );
 
     ProviderFile createFolder(

@@ -4,13 +4,17 @@ import com.storix.storix.file.dto.FileRequest;
 import com.storix.storix.file.dto.FileResponse;
 import com.storix.storix.file.dto.FileUpdateRequest;
 import com.storix.storix.file.entity.File;
+import com.storix.storix.file.provider.google.GoogleDriveProvider;
 import com.storix.storix.file.service.FileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -19,6 +23,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class FileController {
     private final FileService fileService;
+    private final GoogleDriveProvider googleDriveProvider;
+
+
+
+
     @GetMapping
     public ResponseEntity<List<FileResponse>> getAllFiles(Authentication authentication){
         Long userId = Long.parseLong(authentication.getName());
@@ -51,11 +60,14 @@ public class FileController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteFile(@PathVariable Long id,
-                                           Authentication authentication){
-//        return ResponseEntity.ok("file is deleted successfully")
+    public ResponseEntity<Void> deleteFile(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
         Long userId = Long.parseLong(authentication.getName());
-        fileService.deleteFile(id,userId);
+
+        fileService.deleteFile(id, userId);
+
         return ResponseEntity.noContent().build();
     }
 
@@ -69,4 +81,71 @@ public class FileController {
 
         return ResponseEntity.ok().build();
     }
+
+    @GetMapping("/{id}/download")
+    public ResponseEntity<byte[]> downloadFile(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+
+        Long userId = Long.parseLong(authentication.getName());
+
+        File file = fileService.getFileEntity(id, userId);
+
+        byte[] data = fileService.downloadFile(id, userId);
+
+        return ResponseEntity.ok()
+                .contentType(
+                        MediaType.parseMediaType(file.getMimeType())
+                )
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + file.getName() + "\""
+                )
+                .body(data);
+    }
+
+
+
+    @PostMapping(
+            value = "/upload",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ResponseEntity<FileResponse> uploadFile(
+            @RequestParam Long connectedAccountId,
+            @RequestParam MultipartFile file,
+            Authentication authentication
+    ) {
+
+        Long userId =
+                Long.parseLong(authentication.getName());
+
+        FileResponse response =
+                fileService.uploadFile(
+                        userId,
+                        connectedAccountId,
+                        file
+                );
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(response);
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<FileResponse>> searchFiles(
+            @RequestParam String query,
+            Authentication authentication
+    ) {
+
+        Long userId =
+                Long.parseLong(authentication.getName());
+
+        List<FileResponse> files =
+                fileService.searchFiles(userId, query);
+
+        return ResponseEntity.ok(files);
+    }
+
+
 }

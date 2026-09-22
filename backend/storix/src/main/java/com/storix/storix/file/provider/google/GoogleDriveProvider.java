@@ -2,18 +2,22 @@ package com.storix.storix.file.provider.google;
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.HttpRequestInitializer;
+import com.google.api.client.http.InputStreamContent;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.drive.Drive;
+import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.FileList;
 import com.storix.storix.account.entity.ConnectedAccount;
 import com.storix.storix.account.repository.ConnectedAccountRepository;
 import com.storix.storix.common.Enums.StorageProvider;
 import com.storix.storix.file.dto.ProviderFile;
+import com.storix.storix.file.exception.ResourceNotFoundException;
 import com.storix.storix.file.provider.CloudStorageProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,22 +28,7 @@ public class GoogleDriveProvider implements CloudStorageProvider {
 
     private final ConnectedAccountRepository connectedAccountRepository;
 
-    private Drive createDriveClient(Long userId) {
-
-        ConnectedAccount account =
-                connectedAccountRepository
-                        .findAllByUserId(userId)
-                        .stream()
-                        .filter(a ->
-                                a.getProvider() ==
-                                        StorageProvider.GOOGLE_DRIVE
-                        )
-                        .findFirst()
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Google Drive account not connected"
-                                )
-                        );
+    private Drive createDriveClient(ConnectedAccount account) {
 
         try {
             HttpRequestInitializer requestInitializer =
@@ -169,22 +158,147 @@ public class GoogleDriveProvider implements CloudStorageProvider {
 
     @Override
     public byte[] downloadFile(
-            Long userId,
+            Long connectedAccountId,
             String providerFileId
     ) {
-        throw new UnsupportedOperationException(
-                "Download not implemented yet"
-        );
+        ConnectedAccount account =
+                connectedAccountRepository.findById(connectedAccountId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Connected Google account not found"
+                                )
+                        );
+
+        if (account.getProvider() != StorageProvider.GOOGLE_DRIVE) {
+            throw new IllegalArgumentException(
+                    "Connected account is not Google Drive"
+            );
+        }
+
+        Drive drive = createDriveClient(account);
+
+        try {
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            drive.files()
+                    .get(providerFileId)
+                    .executeMediaAndDownloadTo(outputStream);
+
+            return outputStream.toByteArray();
+
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Failed to download Google Drive file",
+                    e
+            );
+        }
     }
 
     @Override
     public void deleteFile(
-            Long userId,
+            Long connectedAccountId,
             String providerFileId
     ) {
-        throw new UnsupportedOperationException(
-                "Delete not implemented yet"
-        );
+        ConnectedAccount account =
+                connectedAccountRepository.findById(connectedAccountId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Connected Google account not found"
+                                )
+                        );
+
+        if (account.getProvider() != StorageProvider.GOOGLE_DRIVE) {
+            throw new IllegalArgumentException(
+                    "Connected account is not Google Drive"
+            );
+        }
+
+        Drive drive = createDriveClient(account);
+
+        try {
+            drive.files()
+                    .delete(providerFileId)
+                    .execute();
+
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Failed to delete Google Drive file",
+                    e
+            );
+        }
+    }
+
+
+    @Override
+    public ProviderFile uploadFile(
+            Long connectedAccountId,
+            String fileName,
+            String mimeType,
+            InputStream inputStream
+    ) {
+
+        ConnectedAccount account =
+                connectedAccountRepository.findById(connectedAccountId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Connected Google account not found"
+                                )
+                        );
+
+        if (account.getProvider() != StorageProvider.GOOGLE_DRIVE) {
+            throw new IllegalArgumentException(
+                    "Connected account is not Google Drive"
+            );
+        }
+
+        Drive drive = createDriveClient(account);
+
+        try {
+
+            File metadata = new File()
+                    .setName(fileName);
+
+            InputStreamContent mediaContent =
+                    new InputStreamContent(
+                            mimeType != null
+                                    ? mimeType
+                                    : "application/octet-stream",
+                            inputStream
+                    );
+
+            File uploadedFile = drive.files()
+                    .create(metadata, mediaContent)
+                    .setFields(
+                            "id,name,mimeType,size,parents"
+                    )
+                    .execute();
+
+            return ProviderFile.builder()
+                    .providerFileId(uploadedFile.getId())
+                    .name(uploadedFile.getName())
+                    .mimeType(uploadedFile.getMimeType())
+                    .size(uploadedFile.getSize())
+                    .category(
+                            determineCategory(
+                                    uploadedFile.getMimeType()
+                            )
+                    )
+                    .providerFolderId(
+                            uploadedFile.getParents() != null
+                                    ? uploadedFile.getParents().get(0)
+                                    : null
+                    )
+                    .connectedAccountId(account.getId())
+                    .build();
+
+        } catch (IOException e) {
+
+            throw new RuntimeException(
+                    "Failed to upload file to Google Drive",
+                    e
+            );
+        }
     }
 
     @Override
@@ -221,4 +335,28 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                 "Storage information not implemented yet"
         );
     }
-}
+        public List<String> getExistingFileIds(ConnectedAccount account) {
+
+            Drive drive = createDriveClient(account);
+
+            try {
+                FileList result = drive.files()
+                        .list()
+                        .setPageSize(100)
+                        .setFields("files(id)")
+                        .execute();
+
+                return result.getFiles()
+                        .stream()
+                        .map(com.google.api.services.drive.model.File::getId)
+                        .toList();
+
+            } catch (IOException e) {
+                throw new RuntimeException(
+                        "Failed to fetch Google Drive file IDs",
+                        e
+                );
+            }
+        }
+    }
+
