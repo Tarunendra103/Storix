@@ -32,14 +32,14 @@ public class FileController {
         return ResponseEntity.ok(fileService.getAllFiles(userId));
     }
 
-    @PostMapping
-    public ResponseEntity<FileResponse> createFile(
-            @Valid @RequestBody FileRequest fileRequest,Authentication authentication){
-        Long userId = Long.parseLong(authentication.getName());
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(fileService.createFile(fileRequest,userId));
-    }
+//    @PostMapping
+//    public ResponseEntity<FileResponse> createFile(
+//            @Valid @RequestBody FileRequest fileRequest,Authentication authentication){
+//        Long userId = Long.parseLong(authentication.getName());
+//        return ResponseEntity
+//                .status(HttpStatus.CREATED)
+//                .body(fileService.createFile(fileRequest,userId));
+//    }
 
     @GetMapping("/{id}")
     public ResponseEntity<FileResponse> getFileById(
