@@ -1,4 +1,10 @@
 import React from 'react';
+
+// import { Routes, Route } from 'react-router-dom';
+import { Login } from './pages/Login';
+import { Register } from './pages/Register';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
 import { VaultProvider, useVault } from './context/VaultContext';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
@@ -18,7 +24,6 @@ import { NewFolderModal } from './components/modals/NewFolderModal';
 import { RenameModal } from './components/modals/RenameModal';
 import { ConfirmDeleteModal } from './components/modals/ConfirmDeleteModal';
 import { ToastContainer } from './components/ui/Toast';
-
 function AppContent() {
   const { activeNav } = useVault();
 
@@ -78,9 +83,45 @@ function AppContent() {
 }
 
 export default function App() {
+  const { isAuthenticated } = useAuth();
+
   return (
-    <VaultProvider>
-      <AppContent />
-    </VaultProvider>
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          isAuthenticated
+            ? <Navigate to="/" replace />
+            : <Login />
+        }
+      />
+
+      <Route
+        path="/register"
+        element={
+          isAuthenticated
+            ? <Navigate to="/" replace />
+            : <Register />
+        }
+      />
+
+      <Route
+        path="/"
+        element={
+          isAuthenticated ? (
+            <VaultProvider>
+              <AppContent />
+            </VaultProvider>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      <Route
+        path="*"
+        element={<Navigate to="/" replace />}
+      />
+    </Routes>
   );
 }

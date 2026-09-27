@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useVault } from '../context/VaultContext';
+import { useAuth } from '../context/AuthContext';
 
 export function Settings() {
   const { addToast, theme, setTheme } = useVault();
@@ -9,7 +10,7 @@ export function Settings() {
   const [notifySync, setNotifySync] = useState(true);
   const [notifyUpload, setNotifyUpload] = useState(true);
   const [autoDeduplicate, setAutoDeduplicate] = useState(true);
-
+const { logout } = useAuth();
   const handleSaveProfile = (e) => {
     e.preventDefault();
     addToast('Profile preferences saved', 'success');
@@ -106,6 +107,12 @@ export function Settings() {
               </button>
             </form>
           )}
+          <button
+  onClick={logout}
+  className="w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+>
+  Log out
+</button>
 
           {/* Section: Appearance */}
           {activeTab === 'appearance' && (
