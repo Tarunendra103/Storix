@@ -1,5 +1,8 @@
 import { initialFiles, initialAccounts, initialCategories } from './mockData';
 import { getFileCategory } from '../utils/fileUtils';
+import { fileApi } from './fileApi';
+import { accountApi } from './accountApi';
+import { accountApi } from '../../services/accountApi';
 
 // In-memory state for runtime operations (mocking Spring Boot REST endpoints)
 let files = [...initialFiles];
@@ -10,29 +13,38 @@ const delay = (ms = 120) => new Promise(resolve => setTimeout(resolve, ms));
 export const api = {
   // --- File Management ---
   async getFiles(filter = {}) {
-    await delay();
-    let result = [...files];
+  let result = await fileApi.getFiles();
 
-    if (filter.category && filter.category !== 'all') {
-      result = result.filter(f => f.category === filter.category);
-    }
-    if (filter.isFavorite) {
-      result = result.filter(f => f.isFavorite);
-    }
-    if (filter.provider && filter.provider !== 'all') {
-      result = result.filter(f => f.provider === filter.provider);
-    }
-    if (filter.search) {
-      const q = filter.search.toLowerCase();
-      result = result.filter(f => 
-        f.name.toLowerCase().includes(q) || 
-        (f.type && f.type.toLowerCase().includes(q)) ||
-        (f.provider && f.provider.toLowerCase().includes(q))
-      );
-    }
+  if (filter.category && filter.category !== 'all') {
+    result = result.filter(
+      f => f.category === filter.category
+    );
+  }
 
-    return result;
-  },
+  if (filter.isFavorite) {
+    result = result.filter(f => f.isFavorite);
+  }
+
+  if (filter.provider && filter.provider !== 'all') {
+    result = result.filter(
+      f => f.provider === filter.provider
+    );
+  }
+
+  if (filter.search) {
+    const q = filter.search.toLowerCase();
+
+    result = result.filter(f =>
+      f.name.toLowerCase().includes(q) ||
+      (f.mimeType &&
+        f.mimeType.toLowerCase().includes(q)) ||
+      (f.provider &&
+        f.provider.toLowerCase().includes(q))
+    );
+  }
+
+  return result;
+},
 
   async getFile(id) {
     await delay();
@@ -175,9 +187,8 @@ export const api = {
 
   // --- Connected Cloud Accounts ---
   async getConnectedAccounts() {
-    await delay();
-    return [...accounts];
-  },
+  return accountApi.getConnectedAccounts();
+},
 
   async connectAccount(accountData) {
     await delay(350);

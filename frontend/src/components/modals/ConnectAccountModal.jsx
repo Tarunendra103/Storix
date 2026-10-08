@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useVault } from '../../context/VaultContext';
-
+import { accountApi } from '../../services/accountApi';
 export function ConnectAccountModal() {
   const {
     connectAccountModalOpen,
@@ -39,25 +39,22 @@ export function ConnectAccountModal() {
     }
   ];
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    const prov = providers.find(p => p.id === selectedProvider);
+  if (selectedProvider !== 'google_drive') {
+    return;
+  }
 
-    setTimeout(() => {
-      handleConnectAccount({
-        name: prov.name,
-        type: selectedProvider,
-        label: label.trim() || 'Additional Drive',
-        accountEmail: accountEmail.trim() || `user.${selectedProvider}@cloudvault.net`,
-        totalStorage: selectedProvider === 'google_drive' ? 15 * 1024 * 1024 * 1024 : selectedProvider === 'onedrive' ? 5 * 1024 * 1024 * 1024 : 2 * 1024 * 1024 * 1024
-      });
-      setIsSubmitting(false);
-      setAccountEmail('');
-      setLabel('');
-    }, 450);
-  };
+  setIsSubmitting(true);
+
+  try {
+    await accountApi.connectGoogle();
+  } catch (error) {
+    console.error('Google connection failed:', error);
+    setIsSubmitting(false);
+  }
+};
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
