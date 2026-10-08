@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 @Getter
 @Setter
 @Builder
@@ -21,5 +23,8 @@ public class FileResponse {
     private Long connectedAccountId;
     private String accountEmail;
     private String providerFolderId;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private boolean isFolder;
 
 }

@@ -359,11 +359,20 @@ public class FileService {
 
     private FileResponse mapToResponse(File file) {
 
+        boolean isFolder =
+                "FOLDERS".equalsIgnoreCase(file.getCategory())
+                        || "application/vnd.google-apps.folder"
+                        .equalsIgnoreCase(file.getMimeType());
+
         return FileResponse.builder()
                 .id(file.getId())
                 .name(file.getName())
                 .mimeType(file.getMimeType())
-                .category(file.getCategory())
+                .category(
+                        file.getCategory() != null
+                                ? file.getCategory().toLowerCase()
+                                : "other"
+                )
                 .size(file.getSize())
                 .provider(file.getProvider())
                 .providerFileId(file.getProviderFileId())
@@ -372,7 +381,9 @@ public class FileService {
                 .favorite(file.isFavorite())
                 .connectedAccountId(file.getConnectedAccount().getId())
                 .accountEmail(file.getConnectedAccount().getAccountEmail())
-
+                .createdAt(file.getCreatedAt())
+                .updatedAt(file.getUpdatedAt())
+                .isFolder(isFolder)
                 .build();
     }
 

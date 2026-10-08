@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/accounts")
@@ -30,16 +31,17 @@ public class AccountController {
     }
 
     @GetMapping("/google/connect")
-    public ResponseEntity<Void> connectGoogle(
+    public ResponseEntity<Map<String, String>> connectGoogle(
             Authentication authentication) {
 
         Long userId = Long.parseLong(authentication.getName());
-        String authorizationUrl=googleOAuthService.generateAuthorizationUrl(userId);
 
+        String authorizationUrl =
+                googleOAuthService.generateAuthorizationUrl(userId);
 
-        return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create(authorizationUrl))
-                        .build();
+        return ResponseEntity.ok(
+                Map.of("authorizationUrl", authorizationUrl)
+        );
     }
 
     @GetMapping("/google/callback")
