@@ -5,6 +5,7 @@ import com.storix.storix.account.entity.ConnectedAccount;
 import com.storix.storix.account.service.AccountService;
 import com.storix.storix.account.service.GoogleOAuthService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -20,6 +21,8 @@ import java.util.Map;
 public class AccountController {
     private final AccountService accountService;
     private final GoogleOAuthService googleOAuthService;
+    @Value("${app.frontend-url:http://localhost:5173}")
+    private String frontendUrl;
 
     @GetMapping
     public List<AccountResponse> getConnectedAccount(
@@ -45,19 +48,17 @@ public class AccountController {
     }
 
     @GetMapping("/google/callback")
-    public AccountResponse googleCallback(
+    public ResponseEntity<Void> googleCallback(
             @RequestParam String code,
             @RequestParam String state
-    ){
-        ConnectedAccount account = googleOAuthService.handleCallback(code,state);
-        return new AccountResponse(
-                account.getId()
-                ,account.getProvider()
-                ,account.getAccountEmail()
-                ,account.getTotalStorage(),
-                account.getUsedStorage()
-        );
+    ) {
+        googleOAuthService.handleCallback(code, state);
+
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .location(URI.create(frontendUrl + "/"))
+                .build();
     }
-}
+    }
+
 
 
