@@ -46,4 +46,10 @@ export const fileApi = {
 
     return mapFile(file);
   },
+
+  async syncFiles() {
+  return apiRequest('/files/sync', {
+    method: 'POST',
+  });
+},
 };

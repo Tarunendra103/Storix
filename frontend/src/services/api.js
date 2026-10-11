@@ -2,7 +2,6 @@ import { initialFiles, initialAccounts, initialCategories } from './mockData';
 import { getFileCategory } from '../utils/fileUtils';
 import { fileApi } from './fileApi';
 import { accountApi } from './accountApi';
-import { accountApi } from '../../services/accountApi';
 
 // In-memory state for runtime operations (mocking Spring Boot REST endpoints)
 let files = [...initialFiles];

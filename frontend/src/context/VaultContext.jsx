@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
-
+import { fileApi } from '../services/fileApi';
 const VaultContext = createContext(null);
 
 export function VaultProvider({ children }) {
@@ -242,16 +242,19 @@ export function VaultProvider({ children }) {
   };
 
   const handleRescan = async () => {
-    try {
-      addToast('Scanning all 4 cloud accounts...', 'info');
-      await api.triggerRescanAll();
-      const updatedStorage = await api.getStorageOverview();
-      setStorageOverview(updatedStorage);
-      addToast('All cloud accounts in sync', 'success');
-    } catch {
-      addToast('Sync failed. Please retry.', 'error');
-    }
-  };
+  try {
+    addToast('Syncing Google Drive files...', 'info');
+
+    await fileApi.syncFiles();
+
+    await loadInitialData();
+
+    addToast('Google Drive sync completed', 'success');
+  } catch (error) {
+    console.error('Google Drive sync failed:', error);
+    addToast('Sync failed. Please check the backend logs.', 'error');
+  }
+};
 
   const openPreview = (file) => {
     if (!file) return;
