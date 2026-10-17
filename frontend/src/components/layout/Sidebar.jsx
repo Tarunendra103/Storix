@@ -14,8 +14,8 @@ export function Sidebar() {
     setIsMobileNavOpen
   } = useVault();
 
-  const total = storageOverview?.totalStorage || 37 * 1024 * 1024 * 1024;
-  const used = storageOverview?.usedStorage || 17.4 * 1024 * 1024 * 1024;
+  const total = storageOverview?.totalStorage ?? null;
+const used = storageOverview?.usedStorage ?? null;
 
   const handleNavClick = (navKey) => {
     setActiveNav(navKey);
@@ -147,7 +147,8 @@ export function Sidebar() {
           <div className="flex items-center justify-between font-label-sm text-label-sm text-on-surface-variant">
             <span className="font-semibold">Storage</span>
             <span className="font-code-sm text-code-sm tabular-nums">
-              {formatBytes(used)} of {formatBytes(total)}
+              {used !== null ? formatBytes(used) : "Unknown"} of{" "}
+{total !== null ? formatBytes(total) : "Unknown"}
             </span>
           </div>
           <SegmentedStorageBar
@@ -173,7 +174,7 @@ export function Sidebar() {
               <span>Connected</span>
             </span>
             <span className="px-1.5 py-0.5 rounded-full font-label-sm text-label-sm bg-surface-container-highest text-on-surface-variant">
-              {connectedAccounts.length || 4}
+              {connectedAccounts.length}
             </span>
           </button>
 

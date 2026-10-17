@@ -10,6 +10,7 @@ export function Home() {
     storageOverview,
     connectedAccounts,
     handleRescan,
+    syncing,
     setUploadModalOpen,
     setActiveNav
   } = useVault();
@@ -17,11 +18,16 @@ export function Home() {
   const [activeChip, setActiveChip] = useState('all');
   const categoryStats = getCategoryStats(files);
 
-  const total = storageOverview?.totalStorage || 37 * 1024 * 1024 * 1024;
-  const used = storageOverview?.usedStorage || 17.4 * 1024 * 1024 * 1024;
-  const available = Math.max(0, total - used);
-  const percentage = total > 0 ? ((used / total) * 100).toFixed(1) : '47.0';
-
+  const total = storageOverview?.totalStorage ?? null;
+const used = storageOverview?.usedStorage ?? null;
+const available =
+  total !== null && used !== null
+    ? Math.max(0, total - used)
+    : null;
+const percentage =
+  total !== null && total > 0 && used !== null
+    ? ((used / total) * 100).toFixed(1)
+    : null;
   // Recent files filtering
   let recentFiles = files.filter(f => !f.isFolder).slice(0, 7);
 
@@ -49,7 +55,7 @@ export function Home() {
             </span>
           </div>
           <p className="font-body-md text-body-md text-on-surface-variant">
-            Your {accountsList.length || 4} cloud accounts are in sync. Unified personal drive active.
+            Your {accountsList.length} cloud account(s) connected. Unified personal drive active.
           </p>
         </div>
 
@@ -57,10 +63,11 @@ export function Home() {
           <button
             type="button"
             onClick={handleRescan}
-            className="h-8 px-space-md rounded bg-surface-container-lowest text-on-surface font-body-sm text-body-sm border border-zinc-border shadow-sm hover:bg-surface-container transition-colors flex items-center gap-space-xs"
+            disabled={syncing}
+            className="h-8 px-space-md rounded bg-surface-container-lowest text-on-surface font-body-sm text-body-sm border border-zinc-border shadow-sm hover:bg-surface-container transition-colors flex items-center gap-space-xs disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <span className="material-symbols-outlined text-[16px] text-outline">sync</span>
-            <span>Rescan All</span>
+            <span className={`material-symbols-outlined text-[16px] text-outline${syncing ? ' animate-spin' : ''}`}>sync</span>
+            <span>{syncing ? 'Syncing…' : 'Rescan All'}</span>
           </button>
           <button
             type="button"
@@ -82,7 +89,7 @@ export function Home() {
                 Capacity:
               </span>
               <span className="font-headline-md text-headline-md text-on-surface tabular-nums">
-                {formatBytes(total)}
+                {total !== null ? formatBytes(total) : 'Unknown'}
               </span>
             </div>
             <span className="text-surface-container-highest">•</span>
@@ -91,10 +98,10 @@ export function Home() {
                 Used:
               </span>
               <span className="font-headline-md text-headline-md text-primary tabular-nums">
-                {formatBytes(used)}
+                {used !== null ? formatBytes(used) : 'Unknown'}
               </span>
               <span className="font-code-sm text-code-sm text-on-surface-variant tabular-nums">
-                ({percentage}%)
+                ({percentage !== null ? `${percentage}%` : '—'})
               </span>
             </div>
             <span className="text-surface-container-highest">•</span>
@@ -103,7 +110,7 @@ export function Home() {
                 Available:
               </span>
               <span className="font-headline-md text-headline-md text-on-surface-variant tabular-nums">
-                {formatBytes(available)}
+                {available !== null ? formatBytes(available) : 'Unknown'}
               </span>
             </div>
           </div>
@@ -125,11 +132,17 @@ export function Home() {
 
         {/* Segmented Multi-provider Progress Bar */}
         <div className="flex flex-col gap-space-xs">
-          <SegmentedStorageBar
-            accounts={accountsList}
-            total={total}
-            className="h-3"
-          />
+          {total !== null && total > 0 ? (
+  <SegmentedStorageBar
+    accounts={accountsList}
+    total={total}
+    className="h-3"
+  />
+) : (
+  <p className="text-sm text-on-surface-variant">
+    Storage capacity is unavailable from the connected account.
+  </p>
+)}
 
           {/* Compact Provider Badges Legend */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-space-xs pt-space-xs">

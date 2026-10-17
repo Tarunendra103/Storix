@@ -57,41 +57,35 @@ export function getFileCategory(filename = '', mimeType = '') {
   return 'other';
 }
 
+
 export function getCategoryStats(files = []) {
   const stats = {
     photos: { count: 0, size: 0 },
     videos: { count: 0, size: 0 },
     documents: { count: 0, size: 0 },
-    other: { count: 0, size: 0 }
+    other: { count: 0, size: 0 },
   };
 
   files.forEach((file) => {
-    if (file.isFolder) return;
-    const category = file.category || getFileCategory(file.name, file.mimeType);
-    if (!stats[category]) return;
-    stats[category].count += 1;
-    stats[category].size += file.size || 0;
+    if (file.isFolder || file.is_folder) return;
+
+    const category = (
+      file.category || getFileCategory(file.name, file.mimeType)
+    ).toLowerCase();
+
+    const normalizedCategory = stats[category]
+      ? category
+      : "other";
+
+    const size = Number(file.size) || 0;
+
+    stats[normalizedCategory].count += 1;
+    stats[normalizedCategory].size += size;
   });
 
   return stats;
 }
 
-export function getProviderBadge(provider = '') {
-  const name = (provider || '').toLowerCase();
-  if (name.includes('google') && name.includes('work')) {
-    return { name: 'Google Drive #2', dotColor: '#34A853', bg: 'bg-[#34A853]' };
-  }
-  if (name.includes('google')) {
-    return { name: 'Google Drive #1', dotColor: '#4285F4', bg: 'bg-[#4285F4]' };
-  }
-  if (name.includes('onedrive')) {
-    return { name: 'OneDrive', dotColor: '#0078D4', bg: 'bg-[#0078D4]' };
-  }
-  if (name.includes('dropbox')) {
-    return { name: 'Dropbox', dotColor: '#0061FF', bg: 'bg-[#0061FF]' };
-  }
-  return { name: provider || 'Cloud', dotColor: '#737686', bg: 'bg-[#737686]' };
-}
 
 export function getFileIconInfo(file) {
   if (!file) return { icon: 'draft', colorClass: 'text-outline', label: 'File' };
@@ -142,4 +136,48 @@ export function getFileIconInfo(file) {
       if (cat === 'documents') return { icon: 'description', colorClass: 'text-on-surface-variant', label: 'Document' };
       return { icon: 'draft', colorClass: 'text-outline', label: 'File' };
   }
+
+  
+}
+
+export function getProviderBadge(provider = '') {
+  const name = provider.toLowerCase();
+
+  if (name.includes('google') && name.includes('work')) {
+    return {
+      name: 'Google Drive #2',
+      dotColor: '#34A853',
+      bg: 'bg-[#34A853]',
+    };
+  }
+
+  if (name.includes('google')) {
+    return {
+      name: 'Google Drive #1',
+      dotColor: '#4285F4',
+      bg: 'bg-[#4285F4]',
+    };
+  }
+
+  if (name.includes('onedrive')) {
+    return {
+      name: 'OneDrive',
+      dotColor: '#0078D4',
+      bg: 'bg-[#0078D4]',
+    };
+  }
+
+  if (name.includes('dropbox')) {
+    return {
+      name: 'Dropbox',
+      dotColor: '#0061FF',
+      bg: 'bg-[#0061FF]',
+    };
+  }
+
+  return {
+    name: provider || 'Cloud',
+    dotColor: '#737686',
+    bg: 'bg-[#737686]',
+  };
 }

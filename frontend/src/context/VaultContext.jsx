@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { fileApi } from '../services/fileApi';
+import { accountApi } from '../services/accountApi';
 const VaultContext = createContext(null);
 
 export function VaultProvider({ children }) {
   const [activeNav, setActiveNav] = useState('home');
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [storageOverview, setStorageOverview] = useState(null);
   const [connectedAccounts, setConnectedAccounts] = useState([]);
 
@@ -154,7 +156,8 @@ export function VaultProvider({ children }) {
 
   const handleDelete = async (fileId) => {
     try {
-      await api.deleteFile(fileId);
+      // Calls DELETE /api/files/{id} — removes from Google Drive and MySQL.
+      await fileApi.deleteFile(fileId);
       setFiles(prev => prev.filter(f => f.id !== fileId));
       setSelectedFileIds(prev => prev.filter(id => id !== fileId));
       if (inspectorFile && inspectorFile.id === fileId) {
@@ -163,9 +166,10 @@ export function VaultProvider({ children }) {
       setDeleteModal({ isOpen: false, file: null, isBatch: false });
       const updatedStorage = await api.getStorageOverview();
       setStorageOverview(updatedStorage);
-      addToast('File moved to trash', 'success');
-    } catch {
-      addToast('Failed to delete file', 'error');
+      addToast('File deleted', 'success');
+    } catch (err) {
+      console.error('Delete failed:', err);
+      addToast('Failed to delete file: ' + (err.message || 'Unknown error'), 'error');
     }
   };
 
@@ -205,14 +209,24 @@ export function VaultProvider({ children }) {
 
   const handleUploadComplete = async (fileData) => {
     try {
-      const created = await api.uploadFile({ ...fileData, parentId: currentFolderId });
+      let created;
+      if (fileData.fileObj && fileData.connectedAccountId) {
+        // Real upload: POST /api/files/upload?connectedAccountId=...  (multipart)
+        created = await fileApi.uploadFile(fileData.connectedAccountId, fileData.fileObj);
+      } else {
+        // Legacy fallback — used when the upload modal doesn't supply a File object.
+        // api.uploadFile now calls the real backend too; if there are no accounts
+        // the call will fail and the catch block will surface the error.
+        created = await api.uploadFile({ ...fileData, parentId: currentFolderId });
+      }
       setFiles(prev => [created, ...prev]);
       const updatedStorage = await api.getStorageOverview();
       setStorageOverview(updatedStorage);
       setInspectorFile(created);
-      addToast(`Uploaded ${created.name} (${created.provider})`, 'success');
-    } catch {
-      addToast('Failed to upload file', 'error');
+      addToast(`Uploaded ${created.name}`, 'success');
+    } catch (err) {
+      console.error('Upload failed:', err);
+      addToast('Failed to upload file: ' + (err.message || 'Unknown error'), 'error');
     }
   };
 
@@ -242,19 +256,84 @@ export function VaultProvider({ children }) {
   };
 
   const handleRescan = async () => {
-  try {
-    addToast('Syncing Google Drive files...', 'info');
+    if (syncing) return; // Prevent concurrent sync calls
+    setSyncing(true);
+    addToast('Syncing Google Drive files…', 'info');
+    try {
+      // POST /api/files/sync — triggers Google Drive sync + quota refresh on backend
+      await fileApi.syncFiles();
 
-    await fileApi.syncFiles();
+      // Reload files and accounts in parallel after a successful sync.
+      // We do NOT call loadInitialData() here because that sets the global
+      // loading spinner which hides the entire app during reload.
+      const [newFiles, newAccounts] = await Promise.all([
+        fileApi.getFiles().catch(err => {
+          console.error('Failed to reload files after sync:', err);
+          return null;
+        }),
+        accountApi.getConnectedAccounts().catch(err => {
+          console.error('Failed to reload accounts after sync:', err);
+          return null;
+        }),
+      ]);
 
-    await loadInitialData();
+      if (newFiles !== null) setFiles(newFiles);
 
-    addToast('Google Drive sync completed', 'success');
-  } catch (error) {
-    console.error('Google Drive sync failed:', error);
-    addToast('Sync failed. Please check the backend logs.', 'error');
-  }
-};
+      if (newAccounts !== null) {
+        setConnectedAccounts(newAccounts);
+        // Recompute storage overview locally from the freshly loaded data.
+        const filesToUse = newFiles ?? files;
+        const actualFiles = filesToUse.filter(f => !f.isFolder);
+
+        const categories = {
+          photos: { count: 0, size: 0 },
+          videos: { count: 0, size: 0 },
+          documents: { count: 0, size: 0 },
+          other: { count: 0, size: 0 },
+        };
+        actualFiles.forEach(f => {
+          const cat = categories[f.category] ? f.category : 'other';
+          categories[cat].count += 1;
+          categories[cat].size += Number(f.size) || 0;
+        });
+
+        let aggregateTotal = null;
+        let aggregateUsed = null;
+        newAccounts.forEach(acc => {
+          if (acc.totalStorage !== null && acc.usedStorage !== null) {
+            aggregateTotal = (aggregateTotal ?? 0) + acc.totalStorage;
+            aggregateUsed = (aggregateUsed ?? 0) + acc.usedStorage;
+          }
+        });
+
+        setStorageOverview({
+          totalStorage: aggregateTotal,
+          usedStorage: aggregateUsed,
+          availableStorage:
+            aggregateTotal !== null && aggregateUsed !== null
+              ? Math.max(0, aggregateTotal - aggregateUsed)
+              : null,
+          percentage:
+            aggregateTotal !== null && aggregateTotal > 0 && aggregateUsed !== null
+              ? Number(((aggregateUsed / aggregateTotal) * 100).toFixed(1))
+              : null,
+          accounts: newAccounts,
+          categories,
+        });
+      }
+
+      addToast('Google Drive sync completed', 'success');
+    } catch (error) {
+      console.error('Google Drive sync failed:', error);
+      addToast(
+        'Sync failed: ' + (error.message || 'Check the backend logs.'),
+        'error'
+      );
+    } finally {
+      setSyncing(false);
+    }
+  };
+
 
   const openPreview = (file) => {
     if (!file) return;
@@ -271,6 +350,7 @@ export function VaultProvider({ children }) {
     files,
     setFiles,
     loading,
+    syncing,
     storageOverview,
     connectedAccounts,
     searchQuery,

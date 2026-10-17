@@ -4,9 +4,7 @@ import { formatBytes } from '../../utils/fileUtils';
 export function SegmentedStorageBar({ accounts = [], total = 0, className = 'h-3' }) {
   if (!accounts || accounts.length === 0 || !total) {
     return (
-      <div className={`w-full ${className} bg-surface-container-high rounded-full overflow-hidden flex p-0.5`}>
-        <div className="h-full bg-primary rounded-full transition-all duration-500 w-[47%]"></div>
-      </div>
+      <div className={`w-full ${className} bg-surface-container-high rounded-full overflow-hidden flex p-0.5`} />
     );
   }
 

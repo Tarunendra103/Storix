@@ -10,17 +10,29 @@ export function ConnectedAccounts() {
     setConnectAccountModalOpen,
     handleDisconnectAccount,
     handleRescan,
+    syncing,
     addToast
   } = useVault();
 
   const [endpointFilter, setEndpointFilter] = useState('all');
 
-  const total = storageOverview?.totalStorage || 37 * 1024 * 1024 * 1024;
-  const used = storageOverview?.usedStorage || 17.4 * 1024 * 1024 * 1024;
-  const available = Math.max(0, total - used);
-  const percentage = total > 0 ? ((used / total) * 100).toFixed(0) : '47';
+  const accounts = connectedAccounts;
 
-  const accounts = storageOverview?.accounts || connectedAccounts;
+const total = storageOverview?.totalStorage ?? null;
+const used = storageOverview?.usedStorage ?? null;
+
+const hasQuota =
+  total !== null &&
+  used !== null &&
+  total > 0;
+
+const available = hasQuota
+  ? Math.max(0, total - used)
+  : null;
+
+const percentage = hasQuota
+  ? ((used / total) * 100).toFixed(0)
+  : null;
 
   const filteredAccounts = accounts.filter(a => {
     if (endpointFilter === 'all') return true;
@@ -68,10 +80,11 @@ export function ConnectedAccounts() {
           <button
             type="button"
             onClick={handleRescan}
-            className="h-9 px-space-md rounded bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center gap-space-xs transition-colors border border-zinc-border"
+            disabled={syncing}
+            className="h-9 px-space-md rounded bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center gap-space-xs transition-colors border border-zinc-border disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <span className="material-symbols-outlined text-[16px]">sync</span>
-            <span>Sync All</span>
+            <span className={`material-symbols-outlined text-[16px]${syncing ? ' animate-spin' : ''}`}>sync</span>
+            <span>{syncing ? 'Syncing…' : 'Sync All'}</span>
           </button>
           <button
             type="button"
@@ -96,13 +109,16 @@ export function ConnectedAccounts() {
                 </span>
                 <div className="flex items-baseline gap-space-xs mt-1 flex-wrap">
                   <span className="font-display text-2xl font-bold text-on-surface tabular-nums">
-                    {formatBytes(used)}
+                   {used !== null ? formatBytes(used) : 'Unavailable'}
                   </span>
                   <span className="font-body-md text-body-md text-on-surface-variant tabular-nums">
-                    of {formatBytes(total)} combined limit
-                  </span>
+{hasQuota
+  ? `of ${formatBytes(total)} combined limit`
+  : 'Storage quota unavailable'}                  </span>
                   <span className="ml-2 font-label-sm text-label-sm px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-semibold">
-                    {percentage}% Utilized
+                    {percentage !== null
+  ? `${percentage}% Utilized`
+  : 'Quota unavailable'}
                   </span>
                 </div>
               </div>
@@ -120,7 +136,9 @@ export function ConnectedAccounts() {
               <span>Automatic quota deduplication enabled across cloud mounts</span>
             </div>
             <span className="font-code-sm text-code-sm text-outline tabular-nums">
-              {formatBytes(available)} headroom available
+              {available !== null
+  ? `${formatBytes(available)} headroom available`
+  : 'Available storage unknown'}
             </span>
           </div>
         </div>
@@ -198,9 +216,14 @@ export function ConnectedAccounts() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-space-base">
         {filteredAccounts.map((account) => {
-          const accPerc = account.totalStorage > 0
+          const hasAccountQuota = account.totalStorage !== null && account.totalStorage > 0 && account.usedStorage !== null;
+          const accPerc = hasAccountQuota
             ? Math.round((account.usedStorage / account.totalStorage) * 100)
-            : 0;
+            : null;
+          const availableAccountStorage = hasAccountQuota
+            ? Math.max(0, account.totalStorage - account.usedStorage)
+            : null;
+
           return (
             <div
               key={account.id}
@@ -238,20 +261,30 @@ export function ConnectedAccounts() {
                   <div className="flex items-center justify-between font-label-sm text-label-sm">
                     <span className="text-on-surface-variant">Storage Allocation</span>
                     <span className="font-semibold text-on-surface tabular-nums">
-                      {formatBytes(account.usedStorage)} of {formatBytes(account.totalStorage)} ({accPerc}%)
+                      {hasAccountQuota
+                        ? `${formatBytes(account.usedStorage)} of ${formatBytes(account.totalStorage)} (${accPerc}%)`
+                        : account.usedStorage !== null
+                          ? `${formatBytes(account.usedStorage)} used (Unlimited/Unknown limit)`
+                          : 'Storage information unavailable'}
                     </span>
                   </div>
-                  <SingleStorageBar
-                    used={account.usedStorage}
-                    total={account.totalStorage}
-                    color={account.color}
-                    className="h-2"
-                  />
+                  {hasAccountQuota ? (
+                    <SingleStorageBar
+                      used={account.usedStorage}
+                      total={account.totalStorage}
+                      color={account.color}
+                      className="h-2"
+                    />
+                  ) : (
+                    <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden" />
+                  )}
                   <div className="flex items-center justify-between text-outline font-label-sm text-label-sm">
                     <span className="tabular-nums">
-                      {formatBytes(account.totalStorage - account.usedStorage)} available
+                      {availableAccountStorage !== null
+                        ? `${formatBytes(availableAccountStorage)} available`
+                        : 'Headroom unavailable'}
                     </span>
-                    <span>Synced {account.lastSynced}</span>
+                    <span>{account.lastSynced ? `Synced ${account.lastSynced}` : 'Connected'}</span>
                   </div>
                 </div>
               </div>

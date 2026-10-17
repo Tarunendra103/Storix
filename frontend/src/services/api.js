@@ -1,11 +1,9 @@
-import { initialFiles, initialAccounts, initialCategories } from './mockData';
+
 import { getFileCategory } from '../utils/fileUtils';
 import { fileApi } from './fileApi';
 import { accountApi } from './accountApi';
-
 // In-memory state for runtime operations (mocking Spring Boot REST endpoints)
-let files = [...initialFiles];
-let accounts = [...initialAccounts];
+
 
 const delay = (ms = 120) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -96,19 +94,11 @@ export const api = {
   },
 
   async deleteFile(id) {
-    await delay();
-    const index = files.findIndex(f => f.id === id);
-    if (index === -1) throw new Error(`File with id ${id} not found`);
-    const removed = files.splice(index, 1)[0];
-
-    // Decrement used storage on corresponding account
-    const acc = accounts.find(a => a.accountEmail === removed.providerAccount);
-    if (acc && !removed.isFolder) {
-      acc.usedStorage = Math.max(0, acc.usedStorage - (removed.size || 0));
-    }
-
-    return { success: true, file: removed };
+    // Calls DELETE /api/files/{id} on the Spring Boot backend.
+    await fileApi.deleteFile(id);
+    return { success: true };
   },
+
 
   async deleteBatch(ids) {
     await delay();
@@ -168,21 +158,71 @@ export const api = {
   },
 
   // --- Storage & Quota ---
-  async getStorageOverview() {
-    await delay();
-    const totalStorage = accounts.reduce((acc, a) => acc + a.totalStorage, 0);
-    const usedStorage = accounts.reduce((acc, a) => acc + a.usedStorage, 0);
-    const availableStorage = Math.max(0, totalStorage - usedStorage);
 
-    return {
-      totalStorage,
-      usedStorage,
-      availableStorage,
-      percentage: totalStorage > 0 ? (usedStorage / totalStorage) * 100 : 0,
-      accounts: [...accounts],
-      categories: { ...initialCategories }
-    };
-  },
+async getStorageOverview() {
+  const [files, accounts] = await Promise.all([
+    fileApi.getFiles(),
+    accountApi.getConnectedAccounts(),
+  ]);
+
+  const actualFiles = files.filter(file => !file.isFolder);
+
+  // Category statistics come from synchronized file metadata (count + sizes).
+  // This is intentionally separate from account quota: quota tracks total Drive
+  // usage (including items Storix hasn't synced), while category stats only
+  // count files that Storix has indexed.
+  const categories = {
+    photos: { count: 0, size: 0 },
+    videos: { count: 0, size: 0 },
+    documents: { count: 0, size: 0 },
+    other: { count: 0, size: 0 },
+  };
+
+  actualFiles.forEach(file => {
+    const category = categories[file.category] ? file.category : 'other';
+    categories[category].count += 1;
+    categories[category].size += Number(file.size) || 0;
+  });
+
+  // Aggregate real quota data from connected accounts.
+  // An account contributes to the totals only when both its totalStorage and
+  // usedStorage are non-null (i.e. quota has been fetched from the provider).
+  // Accounts with null quota (not yet synced, or unlimited Workspace plans)
+  // are skipped so we never invent a number.
+  let aggregateTotalStorage = null;
+  let aggregateUsedStorage = null;
+
+  accounts.forEach(account => {
+    if (account.totalStorage !== null && account.usedStorage !== null) {
+      aggregateTotalStorage = (aggregateTotalStorage ?? 0) + account.totalStorage;
+      aggregateUsedStorage = (aggregateUsedStorage ?? 0) + account.usedStorage;
+    }
+  });
+
+  // Calculate derived values only when we have real quota data.
+  const availableStorage =
+    aggregateTotalStorage !== null && aggregateUsedStorage !== null
+      ? Math.max(0, aggregateTotalStorage - aggregateUsedStorage)
+      : null;
+
+  const percentage =
+    aggregateTotalStorage !== null &&
+    aggregateTotalStorage > 0 &&
+    aggregateUsedStorage !== null
+      ? Number(((aggregateUsedStorage / aggregateTotalStorage) * 100).toFixed(1))
+      : null;
+
+  return {
+    totalStorage: aggregateTotalStorage,
+    usedStorage: aggregateUsedStorage,
+    availableStorage,
+    percentage,
+    accounts,
+    categories,
+  };
+},
+
+
 
   // --- Connected Cloud Accounts ---
   async getConnectedAccounts() {

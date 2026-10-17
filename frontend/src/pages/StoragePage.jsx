@@ -6,10 +6,17 @@ import { formatBytes, getCategoryStats } from '../utils/fileUtils';
 export function StoragePage() {
   const { files, storageOverview, connectedAccounts, setActiveNav, setConnectAccountModalOpen } = useVault();
 
-  const total = storageOverview?.totalStorage || 37 * 1024 * 1024 * 1024;
-  const used = storageOverview?.usedStorage || 17.4 * 1024 * 1024 * 1024;
-  const available = Math.max(0, total - used);
-  const percentage = total > 0 ? ((used / total) * 100).toFixed(1) : '47.0';
+  const total = storageOverview?.totalStorage ?? null;
+const used = storageOverview?.usedStorage ?? null;
+const available =
+  total !== null && used !== null
+    ? Math.max(0, total - used)
+    : null;
+
+const percentage =
+  total !== null && total > 0 && used !== null
+    ? ((used / total) * 100).toFixed(1)
+    : null;
 
   const accounts = storageOverview?.accounts || connectedAccounts;
 
@@ -50,16 +57,15 @@ export function StoragePage() {
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="font-display text-3xl font-bold text-on-surface tabular-nums">
-                {formatBytes(used)}
+                {used !== null ? formatBytes(used) : 'Unknown'}
               </span>
               <span className="font-body-md text-body-md text-on-surface-variant tabular-nums">
-                used of {formatBytes(total)} total ({percentage}%)
-              </span>
+used of {total !== null ? formatBytes(total) : 'Unknown'} total
+({percentage !== null ? `${percentage}%` : '—'})              </span>
             </div>
           </div>
           <span className="font-code-sm text-code-sm text-primary font-medium">
-            {formatBytes(available)} headroom available
-          </span>
+{available !== null ? formatBytes(available) : 'Unknown'} headroom available          </span>
         </div>
 
         <SegmentedStorageBar accounts={accounts} total={total} className="h-3.5" />
@@ -80,9 +86,10 @@ export function StoragePage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {accounts.map((account) => {
-            const accPercentage = account.totalStorage > 0
+            const hasQuota = account.totalStorage !== null && account.totalStorage > 0 && account.usedStorage !== null;
+            const accPercentage = hasQuota
               ? ((account.usedStorage / account.totalStorage) * 100).toFixed(0)
-              : 0;
+              : null;
             return (
               <div
                 key={account.id}
@@ -111,16 +118,24 @@ export function StoragePage() {
                     {account.accountEmail}
                   </span>
                   <span className="font-code-sm text-code-sm font-semibold text-on-surface tabular-nums">
-                    {formatBytes(account.usedStorage)} / {formatBytes(account.totalStorage)} ({accPercentage}%)
+                    {hasQuota
+                      ? `${formatBytes(account.usedStorage)} / ${formatBytes(account.totalStorage)} (${accPercentage}%)`
+                      : account.usedStorage !== null
+                        ? `${formatBytes(account.usedStorage)} used`
+                        : 'Storage information unavailable'}
                   </span>
                 </div>
 
-                <SingleStorageBar
-                  used={account.usedStorage}
-                  total={account.totalStorage}
-                  color={account.color}
-                  className="h-2"
-                />
+                {hasQuota ? (
+                  <SingleStorageBar
+                    used={account.usedStorage}
+                    total={account.totalStorage}
+                    color={account.color}
+                    className="h-2"
+                  />
+                ) : (
+                  <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden" />
+                )}
               </div>
             );
           })}
