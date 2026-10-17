@@ -186,6 +186,8 @@ public class FileService {
                     fileRepository.delete(storedFile);
                 }
             }
+
+            googleDriveProvider.refreshStorageQuota(account);
         }
     }
 

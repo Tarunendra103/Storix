@@ -14,22 +14,40 @@ import com.storix.storix.file.dto.ProviderFile;
 import com.storix.storix.file.exception.ResourceNotFoundException;
 import com.storix.storix.file.provider.CloudStorageProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 public class GoogleDriveProvider implements CloudStorageProvider {
 
+    @Value("${google.oauth.client-id}")
+    private String clientId;
+
+    @Value("${google.oauth.client-secret}")
+    private String clientSecret;
+
+    @Value("${google.oauth.token-uri}")
+    private String tokenUri;
+
+    private final RestClient restClient = RestClient.create();
+
     private final ConnectedAccountRepository connectedAccountRepository;
 
     private Drive createDriveClient(ConnectedAccount account) {
-
+        refreshAccessTokenIfNeeded(account);
         try {
             HttpRequestInitializer requestInitializer =
                     request -> request.getHeaders()
@@ -325,17 +343,15 @@ public class GoogleDriveProvider implements CloudStorageProvider {
 
     @Override
     public Long getTotalStorage(Long userId) {
-        throw new UnsupportedOperationException(
-                "Storage information not implemented yet"
-        );
+        return 0L;
     }
 
     @Override
     public Long getUsedStorage(Long userId) {
-        throw new UnsupportedOperationException(
-                "Storage information not implemented yet"
-        );
+        return 0L;
     }
+
+
     public List<String> getExistingFileIds(
             ConnectedAccount account
     ) {
@@ -495,5 +511,103 @@ public class GoogleDriveProvider implements CloudStorageProvider {
 
         return getRootFolderId(account);
     }
+
+    public void refreshStorageQuota(ConnectedAccount account) {
+
+        Drive drive = createDriveClient(account);
+
+        try {
+            com.google.api.services.drive.model.About about =
+                    drive.about()
+                            .get()
+                            .setFields("storageQuota(limit,usage,usageInDrive)")
+                            .execute();
+
+            com.google.api.services.drive.model.About.StorageQuota quota =
+                    about.getStorageQuota();
+
+            if (quota == null) {
+                account.setTotalStorage(null);
+                account.setUsedStorage(null);
+            } else {
+                account.setTotalStorage(quota.getLimit());
+
+                // Storage used by files in Google Drive, in bytes.
+                account.setUsedStorage(quota.getUsage());
+            }
+
+            account.setUpdatedAt(java.time.LocalDateTime.now());
+
+            connectedAccountRepository.save(account);
+
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Failed to fetch Google Drive storage quota",
+                    e
+            );
+        }
     }
+
+
+    private void refreshAccessTokenIfNeeded(ConnectedAccount account) {
+
+        // Refresh shortly before expiration.
+        if (account.getExpiresAt() != null
+                && account.getExpiresAt().isAfter(
+                LocalDateTime.now().plusMinutes(1))) {
+            return;
+        }
+
+        String refreshToken = account.getRefreshToken();
+
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new IllegalStateException(
+                    "Google access token expired and no refresh token exists. "
+                            + "Reconnect the Google account."
+            );
+        }
+
+        MultiValueMap<String, String> formData =
+                new LinkedMultiValueMap<>();
+
+        formData.add("client_id", clientId);
+        formData.add("client_secret", clientSecret);
+        formData.add("refresh_token", refreshToken);
+        formData.add("grant_type", "refresh_token");
+
+        Map<String, Object> response = restClient
+                .post()
+                .uri(tokenUri)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(formData)
+                .retrieve()
+                .body(Map.class);
+
+        if (response == null || response.get("access_token") == null) {
+            throw new IllegalStateException(
+                    "Google did not return a refreshed access token."
+            );
+        }
+
+        account.setAccessToken(
+                (String) response.get("access_token")
+        );
+
+        Number expiresIn = (Number) response.get("expires_in");
+
+        if (expiresIn != null) {
+            account.setExpiresAt(
+                    LocalDateTime.now()
+                            .plusSeconds(expiresIn.longValue())
+            );
+        }
+
+        account.setUpdatedAt(LocalDateTime.now());
+
+        connectedAccountRepository.save(account);
+    }
+
+    }
+
+
 
