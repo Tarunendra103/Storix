@@ -75,15 +75,15 @@ export function Header() {
           )}
         </div>
 
-        {/* Sync Telemetry Badge */}
+        {/* Sync control */}
         <button
           type="button"
           onClick={handleRescan}
           className="hidden xl:flex items-center gap-space-xs font-body-sm text-body-sm text-on-surface-variant cursor-pointer hover:opacity-80 transition-opacity shrink-0"
-          title="Click to trigger rescan of all accounts"
+          title="Sync all connected Google Drive accounts"
         >
-          <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse"></span>
-          <span>All {connectedAccounts.length || 4} accounts synced</span>
+          <span className="material-symbols-outlined text-[16px]">sync</span>
+          <span>Sync {connectedAccounts.length} account{connectedAccounts.length === 1 ? '' : 's'}</span>
         </button>
       </div>
 

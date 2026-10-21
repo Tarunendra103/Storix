@@ -25,7 +25,9 @@ const percentage =
     { key: 'photos', name: 'Photos & Gallery', ...categoryStats.photos, color: '#2563eb', icon: 'image' },
     { key: 'videos', name: 'Videos & Media', ...categoryStats.videos, color: '#4b41e1', icon: 'movie' },
     { key: 'documents', name: 'Documents & Worksheets', ...categoryStats.documents, color: '#0053db', icon: 'description' },
-    { key: 'other', name: 'Archives & Other', ...categoryStats.other, color: '#bc4800', icon: 'folder_zip' }
+    { key: 'audio', name: 'Audio', ...categoryStats.audio, color: '#0f766e', icon: 'audio_file' },
+    { key: 'archives', name: 'Archives', ...categoryStats.archives, color: '#bc4800', icon: 'folder_zip' },
+    { key: 'other', name: 'Other', ...categoryStats.other, color: '#737686', icon: 'category' }
   ];
 
   return (
@@ -145,13 +147,13 @@ used of {total !== null ? formatBytes(total) : 'Unknown'} total
       {/* Storage By Category */}
       <div className="flex flex-col gap-3">
         <h2 className="font-headline-lg text-headline-lg text-on-surface">Storage by Category</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {categories.map((cat) => {
             const catPercentage = total > 0 ? ((cat.size / total) * 100).toFixed(1) : 0;
             return (
               <div
                 key={cat.key}
-                onClick={() => setActiveNav(cat.key === 'other' ? 'my-files' : cat.key)}
+                onClick={() => setActiveNav(['audio', 'archives', 'other'].includes(cat.key) ? 'my-files' : cat.key)}
                 className="bg-surface-container-lowest p-4 rounded-xl border border-zinc-border shadow-sm flex flex-col justify-between h-36 cursor-pointer hover:border-primary transition-colors"
               >
                 <div className="flex items-center justify-between">

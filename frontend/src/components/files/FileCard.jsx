@@ -117,7 +117,7 @@ export function FileCard({ file }) {
           {file.name}
         </span>
         <div className="flex items-center justify-between text-body-sm text-on-surface-variant font-code-sm text-[11px]">
-          <span className="truncate">{file.isFolder ? `${file.itemCount} items` : formatBytes(file.size)}</span>
+          <span className="truncate">{file.isFolder ? 'Folder' : formatBytes(file.size)}</span>
           <div className="flex items-center gap-1 truncate ml-1">
             <span
               className="w-1.5 h-1.5 rounded-full shrink-0"

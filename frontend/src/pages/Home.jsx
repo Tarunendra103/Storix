@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useVault } from '../context/VaultContext';
 import { SegmentedStorageBar } from '../components/ui/StorageBar';
 import { FileTable } from '../components/files/FileTable';
+import { BulkActions } from '../components/files/BulkActions';
 import { formatBytes, getCategoryStats } from '../utils/fileUtils';
 
 export function Home() {
@@ -17,6 +18,13 @@ export function Home() {
 
   const [activeChip, setActiveChip] = useState('all');
   const categoryStats = getCategoryStats(files);
+  const otherStats = ['other', 'audio', 'archives'].reduce(
+    (totals, category) => ({
+      count: totals.count + categoryStats[category].count,
+      size: totals.size + categoryStats[category].size,
+    }),
+    { count: 0, size: 0 }
+  );
 
   const total = storageOverview?.totalStorage ?? null;
 const used = storageOverview?.usedStorage ?? null;
@@ -47,15 +55,15 @@ const percentage =
         <div className="flex flex-col gap-space-2xs">
           <div className="flex items-center gap-space-sm flex-wrap">
             <h1 className="font-display text-display text-on-surface tracking-tight">
-              Good evening, Tarun
+              Welcome to Storix
             </h1>
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm border border-zinc-border">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              Live Sync
+              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+              Drive catalog
             </span>
           </div>
           <p className="font-body-md text-body-md text-on-surface-variant">
-            Your {accountsList.length} cloud account(s) connected. Unified personal drive active.
+            {accountsList.length} cloud account(s) connected. Use Sync to refresh Drive metadata.
           </p>
         </div>
 
@@ -185,7 +193,7 @@ const percentage =
             File Categories
           </span>
           <span className="font-body-sm text-body-sm text-on-surface-variant">
-            Auto-aggregated from all clouds
+            Derived from synchronized Drive metadata
           </span>
         </div>
 
@@ -277,7 +285,7 @@ const percentage =
             </div>
           </div>
 
-          {/* Other / Archives */}
+          {/* Other file types */}
           <div
             onClick={() => setActiveNav('other')}
             onKeyDown={(event) => {
@@ -298,10 +306,10 @@ const percentage =
             </div>
             <div>
               <h3 className="font-headline-sm text-headline-sm text-on-surface group-hover:text-tertiary transition-colors">
-                Other / Archives
+                Other files
               </h3>
               <p className="font-body-sm text-body-sm text-on-surface-variant">
-                {categoryStats.other.count} files • {formatBytes(categoryStats.other.size)}
+                {otherStats.count} files • {formatBytes(otherStats.size)}
               </p>
             </div>
           </div>
@@ -351,14 +359,17 @@ const percentage =
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveNav('my-files')}
-            className="text-primary hover:underline font-label-md text-label-md flex items-center gap-1 self-start sm:self-auto"
-          >
-            <span>View all files in My Files</span>
-            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <BulkActions files={recentFiles} />
+            <button
+              type="button"
+              onClick={() => setActiveNav('my-files')}
+              className="text-primary hover:underline font-label-md text-label-md flex items-center gap-1 self-start sm:self-auto"
+            >
+              <span>View all files in My Files</span>
+              <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+            </button>
+          </div>
         </div>
 
         <FileTable files={recentFiles} emptyMessage="No recent files match this filter" />

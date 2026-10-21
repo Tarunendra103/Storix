@@ -12,28 +12,27 @@ export function MyFiles() {
     setViewMode,
     sortBy,
     selectedFileIds,
+    handleBatchDownload,
     clearSelection,
     setUploadModalOpen,
     setNewFolderModalOpen,
     setDeleteModal,
     isInspectorOpen,
     setIsInspectorOpen,
-    addToast,
     activeNav,
     currentFolderId,
     setCurrentFolderId
   } = useVault();
 
   const [inFolderFilter, setInFolderFilter] = useState('');
-  const [providerScope, setProviderScope] = useState('all');
   const currentFolder = currentFolderId ? files.find(f => f.id === currentFolderId) : null;
 
   let displayedFiles = [...files];
 
   if (currentFolder) {
-    displayedFiles = displayedFiles.filter(f => f.parentId === currentFolder.id);
+    displayedFiles = displayedFiles.filter((file) => file.providerFolderId === currentFolder.providerFileId);
   } else if (activeNav === 'other') {
-    displayedFiles = displayedFiles.filter(f => f.category === 'other');
+    displayedFiles = displayedFiles.filter(f => ['other', 'audio', 'archives'].includes(f.category));
   } else if (activeNav === 'recent') {
     displayedFiles = displayedFiles.filter(f => !f.isFolder);
   }
@@ -42,8 +41,7 @@ export function MyFiles() {
     const q = inFolderFilter.toLowerCase();
     displayedFiles = displayedFiles.filter(f =>
       f.name.toLowerCase().includes(q) ||
-      (f.type && f.type.toLowerCase().includes(q)) ||
-      (f.tag && f.tag.toLowerCase().includes(q))
+      (f.mimeType && f.mimeType.toLowerCase().includes(q))
     );
   }
 
@@ -51,14 +49,8 @@ export function MyFiles() {
     const q = searchQuery.toLowerCase();
     displayedFiles = displayedFiles.filter(f =>
       f.name.toLowerCase().includes(q) ||
-      (f.type && f.type.toLowerCase().includes(q)) ||
+      (f.mimeType && f.mimeType.toLowerCase().includes(q)) ||
       (f.provider && f.provider.toLowerCase().includes(q))
-    );
-  }
-
-  if (providerScope !== 'all') {
-    displayedFiles = displayedFiles.filter(f =>
-      (f.provider || '').toLowerCase().includes(providerScope.toLowerCase())
     );
   }
 
@@ -120,7 +112,7 @@ export function MyFiles() {
                 <div className="h-3 w-px bg-surface-container-highest mx-0.5" />
                 <button
                   type="button"
-                  onClick={() => addToast(`Downloading ${selectedFileIds.length} items...`, 'info')}
+                  onClick={() => void handleBatchDownload()}
                   className="h-6 px-2 rounded bg-surface-container-lowest text-on-surface hover:bg-surface-container-high font-body-sm text-body-sm flex items-center gap-1 transition-colors border border-zinc-border"
                 >
                   <span className="material-symbols-outlined text-[14px]">download</span>
@@ -166,19 +158,7 @@ export function MyFiles() {
         {/* Row 2: Filtering, View toggles & Sort specs */}
         <div className="flex flex-wrap items-center justify-between gap-space-sm pt-space-xs border-t border-zinc-border/40">
           <div className="flex items-center gap-space-sm flex-1 max-w-xl">
-            {/* Provider Scope Filter */}
-            <select
-              value={providerScope}
-              onChange={(e) => setProviderScope(e.target.value)}
-              className="h-8 px-space-sm bg-surface-container rounded border border-zinc-border font-body-sm text-body-sm text-on-surface focus:outline-none focus:border-primary transition-colors cursor-pointer"
-            >
-              <option value="all">All Providers (4)</option>
-              <option value="google">Google Drive</option>
-              <option value="onedrive">OneDrive</option>
-              <option value="dropbox">Dropbox</option>
-            </select>
-
-            {/* In-folder filter search */}
+            {/* File filter */}
             <div className="relative flex-1">
               <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[16px] text-outline">
                 search
@@ -187,7 +167,7 @@ export function MyFiles() {
                 type="text"
                 value={inFolderFilter}
                 onChange={(e) => setInFolderFilter(e.target.value)}
-                placeholder="Filter by name, extension, or tag..."
+                placeholder="Filter files in this view..."
                 className="w-full h-8 pl-8 pr-7 bg-surface-container rounded border border-zinc-border font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest focus:ring-1 focus:ring-primary transition-all"
               />
               {inFolderFilter && (

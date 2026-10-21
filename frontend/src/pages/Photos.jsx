@@ -2,35 +2,32 @@ import React from 'react';
 import { useVault } from '../context/VaultContext';
 import { EmptyState } from '../components/ui/EmptyState';
 import { formatBytes, getProviderBadge } from '../utils/fileUtils';
+import { FileTypeIcon } from '../components/files/FileTypeIcon';
+import { BulkActions } from '../components/files/BulkActions';
 
 export function Photos() {
   const {
     files,
     openPreview,
     handleToggleFavorite,
-    setUploadModalOpen
+    setUploadModalOpen,
+    selectedFileIds,
+    toggleSelectFile,
   } = useVault();
 
-  const photoFiles = files.filter(f => f.category === 'photos' || f.type === 'Image');
+  const photoFiles = files.filter((file) => file.category === 'photos');
 
   return (
     <div className="flex flex-col w-full gap-space-md animate-in fade-in duration-200">
       {/* Top Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-zinc-border">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-zinc-border">
         <div>
           <h1 className="font-display text-display text-on-surface">Photos & Gallery</h1>
           <p className="font-body-sm text-body-sm text-on-surface-variant">
             {photoFiles.length} photos aggregated from your connected cloud drives
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setUploadModalOpen(true)}
-          className="h-8 px-4 rounded bg-primary-container text-on-primary font-headline-sm text-headline-sm hover:bg-primary transition-colors flex items-center gap-1.5 shadow-sm"
-        >
-          <span className="material-symbols-outlined text-[16px]">add_photo_alternate</span>
-          <span>Upload Photos</span>
-        </button>
+        <div className="flex items-center gap-2"><BulkActions files={photoFiles} /><button type="button" onClick={() => setUploadModalOpen(true)} className="h-8 px-4 rounded bg-primary-container text-on-primary hover:bg-primary flex items-center gap-1.5 shadow-sm"><span className="material-symbols-outlined text-[16px]">add_photo_alternate</span>Upload</button></div>
       </div>
 
       {photoFiles.length === 0 ? (
@@ -51,12 +48,12 @@ export function Photos() {
                 onClick={() => openPreview(photo)}
                 className="group relative aspect-square rounded-lg overflow-hidden bg-surface-container cursor-pointer transition-all duration-200 border border-zinc-border/60 hover:shadow-lg"
               >
-                <img
-                  src={photo.thumbnailUrl || photo.previewUrl}
-                  alt={photo.name}
-                  loading="lazy"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
+                <label className="absolute top-2 left-2 z-10 p-1 rounded bg-black/55 text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" onClick={(event) => event.stopPropagation()}>
+                  <input type="checkbox" checked={selectedFileIds.includes(photo.id)} onChange={() => toggleSelectFile(photo.id)} className="accent-primary" aria-label={`Select ${photo.name}`} />
+                </label>
+                {photo.thumbnailUrl ? (
+                  <img src={photo.thumbnailUrl} alt={photo.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                ) : <FileTypeIcon file={photo} className="text-[44px]" />}
 
                 {/* Subtle Hover Gradient Overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/30 opacity-0 group-hover:opacity-100 transition-opacity p-2.5 flex flex-col justify-between select-none">

@@ -1,16 +1,13 @@
-# React + Vite
+# Storix frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The Vite client talks only to the Storix API; it has no mock-data fallback and never receives Google OAuth credentials.
 
-Currently, two official plugins are available:
+## Local startup (PowerShell)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Copy `.env.example` to `.env` if the API is not at `http://localhost:8080/api`.
+2. Run `npm install`.
+3. Run `npm run dev`.
 
-## React Compiler
+Use `npm run lint` and `npm run build` before shipping.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Google Drive files are fetched through authenticated backend endpoints for previews and downloads. Images, PDFs, and videos display real file bytes; unsupported formats show metadata and a real download action.

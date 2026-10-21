@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useVault } from '../../context/VaultContext';
+import { PreviewStatus, useFilePreview } from './useFilePreview.jsx';
 
 export function ImagePreview({ file }) {
   const [zoomLevel, setZoomLevel] = useState(100);
   const { files, openPreview } = useVault();
+  const preview = useFilePreview(file);
 
   // Find all photos for previous / next navigation
   const photoFiles = files.filter(f => f.category === 'photos' || f.type === 'Image');
@@ -28,15 +30,6 @@ export function ImagePreview({ file }) {
   };
 
   const resetZoom = () => setZoomLevel(100);
-
-  const exif = file.exif || {
-    camera: 'Sony ILCE-7RM4',
-    lens: 'FE 24-70mm F2.8 GM',
-    iso: '100',
-    shutter: '1/320s',
-    aperture: 'f/4.0',
-    dimensions: '3840 x 2160'
-  };
 
   return (
     <div className="flex flex-col h-full w-full bg-black/90 relative">
@@ -85,6 +78,8 @@ export function ImagePreview({ file }) {
 
       {/* Main Image Stage */}
       <div className="flex-1 overflow-auto flex items-center justify-center p-4 relative select-none">
+        {(preview.loading || preview.error) && <PreviewStatus {...preview} />}
+        {preview.url && <>
         {/* Previous Button */}
         {currentIndex > 0 && (
           <button
@@ -103,27 +98,11 @@ export function ImagePreview({ file }) {
           className="relative max-w-4xl max-h-[580px] rounded-xl overflow-hidden shadow-2xl transition-transform duration-100 flex items-center justify-center"
         >
           <img
-            src={file.previewUrl || file.thumbnailUrl}
+            src={preview.url}
             alt={file.name}
             className="max-h-[540px] w-auto object-contain rounded-lg shadow-2xl"
           />
 
-          {/* Floating EXIF Metadata Badge Overlay */}
-          <div className="absolute bottom-3 left-3 right-3 bg-surface-container-lowest/90 backdrop-blur px-3 py-2 rounded-lg flex items-center justify-between text-on-surface shadow-md border border-white/20">
-            <div className="flex items-center gap-3">
-              <span className="font-label-sm text-label-sm font-semibold">{exif.camera}</span>
-              <span className="text-outline text-xs">•</span>
-              <span className="font-body-sm text-body-sm text-on-surface-variant font-mono text-[11px] hidden sm:inline">
-                {exif.lens}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 font-code-sm text-code-sm text-outline text-[11px]">
-              <span>ISO {exif.iso}</span>
-              <span>{exif.shutter}</span>
-              <span>{exif.aperture}</span>
-              <span className="hidden sm:inline font-medium text-on-surface">[{exif.dimensions}]</span>
-            </div>
-          </div>
         </div>
 
         {/* Next Button */}
@@ -137,6 +116,7 @@ export function ImagePreview({ file }) {
             <span className="material-symbols-outlined text-[24px]">chevron_right</span>
           </button>
         )}
+        </>}
       </div>
     </div>
   );

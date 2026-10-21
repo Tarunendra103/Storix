@@ -19,7 +19,7 @@ export function VaultProvider({ children }) {
   const [sortBy, setSortBy] = useState('modified-desc'); // 'modified-desc', 'name-asc', 'size-desc'
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [currentFolderId, setCurrentFolderId] = useState(null);
-  const [theme, setTheme] = useState(() => localStorage.getItem('cloudvault-theme') || 'light');
+  const [theme, setTheme] = useState(() => localStorage.getItem('storix-theme') || 'light');
 
   // Selection & Inspector
   const [selectedFileIds, setSelectedFileIds] = useState([]);
@@ -55,13 +55,12 @@ export function VaultProvider({ children }) {
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     try {
-      const [allFiles, storage, accounts] = await Promise.all([
+      const [allFiles, accounts] = await Promise.all([
         api.getFiles(),
-        api.getStorageOverview(),
         api.getConnectedAccounts()
       ]);
       setFiles(allFiles);
-      setStorageOverview(storage);
+      setStorageOverview(await api.getStorageOverview(allFiles, accounts));
       setConnectedAccounts(accounts);
       if (allFiles.length > 0) {
         setInspectorFile(current => current || allFiles[0]);
@@ -80,7 +79,7 @@ export function VaultProvider({ children }) {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
-    localStorage.setItem('cloudvault-theme', theme);
+    localStorage.setItem('storix-theme', theme);
   }, [theme]);
 
   // Keyboard shortcut listener for global search (⌘K or Ctrl+K)
@@ -129,7 +128,9 @@ export function VaultProvider({ children }) {
   // Actions
   const handleToggleFavorite = async (fileId) => {
     try {
-      const updated = await api.toggleFavorite(fileId);
+      const current = files.find((file) => file.id === fileId);
+      if (!current) throw new Error('File no longer exists.');
+      const updated = await fileApi.setFavorite(fileId, !current.isFavorite);
       setFiles(prev => prev.map(f => f.id === fileId ? { ...f, isFavorite: updated.isFavorite } : f));
       if (inspectorFile && inspectorFile.id === fileId) {
         setInspectorFile(prev => ({ ...prev, isFavorite: updated.isFavorite }));
@@ -173,18 +174,59 @@ export function VaultProvider({ children }) {
     }
   };
 
-  const handleBatchDelete = async () => {
+  const handleDownload = async (file) => {
     try {
-      const count = selectedFileIds.length;
-      await api.deleteBatch(selectedFileIds);
-      setFiles(prev => prev.filter(f => !selectedFileIds.includes(f.id)));
-      setSelectedFileIds([]);
-      setDeleteModal({ isOpen: false, file: null, isBatch: false });
+      await fileApi.downloadFile(file.id, file.name);
+      addToast(`Downloaded ${file.name}`, 'success');
+    } catch (error) {
+      addToast(error.message || 'Download failed', 'error');
+    }
+  };
+
+  const handleBatchDownload = async () => {
+    const selectedFiles = files.filter((file) => selectedFileIds.includes(file.id) && !file.isFolder);
+    if (!selectedFiles.length) {
+      addToast('Folders cannot be downloaded. Select one or more files instead.', 'info');
+      return;
+    }
+    try {
+      await Promise.all(selectedFiles.map((file) => fileApi.downloadFile(file.id, file.name)));
+      addToast(`Downloaded ${selectedFiles.length} file${selectedFiles.length === 1 ? '' : 's'}`, 'success');
+    } catch (error) {
+      addToast(error.message || 'One or more downloads failed', 'error');
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    const idsToDelete = [...selectedFileIds];
+    if (!idsToDelete.length) return;
+
+    const results = [];
+    for (const fileId of idsToDelete) {
+      try {
+        await fileApi.deleteFile(fileId);
+        results.push({ fileId, deleted: true });
+      } catch (error) {
+        results.push({ fileId, deleted: false, error });
+      }
+    }
+
+    const deletedIds = results.filter((result) => result.deleted).map((result) => result.fileId);
+    const failedIds = results.filter((result) => !result.deleted).map((result) => result.fileId);
+    if (deletedIds.length) {
+      setFiles((current) => current.filter((file) => !deletedIds.includes(file.id)));
       const updatedStorage = await api.getStorageOverview();
       setStorageOverview(updatedStorage);
-      addToast(`Deleted ${count} items`, 'success');
-    } catch {
-      addToast('Failed to delete selected items', 'error');
+    }
+    setSelectedFileIds(failedIds);
+    setDeleteModal({ isOpen: false, file: null, isBatch: false });
+
+    if (!failedIds.length) {
+      addToast(`Deleted ${deletedIds.length} item${deletedIds.length === 1 ? '' : 's'}`, 'success');
+    } else if (deletedIds.length) {
+      addToast(`Deleted ${deletedIds.length}; ${failedIds.length} could not be deleted.`, 'error');
+    } else {
+      addToast('None of the selected files could be deleted. Sync Drive to remove entries that are no longer accessible.', 'error');
     }
   };
 
@@ -197,7 +239,10 @@ export function VaultProvider({ children }) {
 
   const handleCreateFolder = async (folderName) => {
     try {
-      const newFolder = await api.createFolder(folderName, currentFolderId);
+      const currentFolder = currentFolderId ? files.find((file) => file.id === currentFolderId) : null;
+      const connectedAccountId = currentFolder?.connectedAccountId || connectedAccounts[0]?.id;
+      if (!connectedAccountId) throw new Error('Connect a Google Drive account before creating a folder.');
+      const newFolder = await api.createFolder(folderName, connectedAccountId, currentFolderId);
       setFiles(prev => [newFolder, ...prev]);
       setNewFolderModalOpen(false);
       setInspectorFile(newFolder);
@@ -209,16 +254,10 @@ export function VaultProvider({ children }) {
 
   const handleUploadComplete = async (fileData) => {
     try {
-      let created;
-      if (fileData.fileObj && fileData.connectedAccountId) {
-        // Real upload: POST /api/files/upload?connectedAccountId=...  (multipart)
-        created = await fileApi.uploadFile(fileData.connectedAccountId, fileData.fileObj);
-      } else {
-        // Legacy fallback — used when the upload modal doesn't supply a File object.
-        // api.uploadFile now calls the real backend too; if there are no accounts
-        // the call will fail and the catch block will surface the error.
-        created = await api.uploadFile({ ...fileData, parentId: currentFolderId });
+      if (!fileData.fileObj || !fileData.connectedAccountId) {
+        throw new Error('Choose a connected Google Drive account and a local file.');
       }
+      const created = await fileApi.uploadFile(fileData.connectedAccountId, fileData.fileObj, currentFolderId);
       setFiles(prev => [created, ...prev]);
       const updatedStorage = await api.getStorageOverview();
       setStorageOverview(updatedStorage);
@@ -227,19 +266,16 @@ export function VaultProvider({ children }) {
     } catch (err) {
       console.error('Upload failed:', err);
       addToast('Failed to upload file: ' + (err.message || 'Unknown error'), 'error');
+      throw err;
     }
   };
 
-  const handleConnectAccount = async (accountData) => {
+  const handleConnectAccount = async () => {
     try {
-      const newAcc = await api.connectAccount(accountData);
-      setConnectedAccounts(prev => [...prev, newAcc]);
-      const updatedStorage = await api.getStorageOverview();
-      setStorageOverview(updatedStorage);
-      setConnectAccountModalOpen(false);
-      addToast(`Connected ${newAcc.name} (${newAcc.label})`, 'success');
-    } catch {
-      addToast('Failed to connect cloud account', 'error');
+      await accountApi.connectGoogle();
+    } catch (error) {
+      addToast(error.message || 'Failed to start Google authorization', 'error');
+      throw error;
     }
   };
 
@@ -261,68 +297,21 @@ export function VaultProvider({ children }) {
     addToast('Syncing Google Drive files…', 'info');
     try {
       // POST /api/files/sync — triggers Google Drive sync + quota refresh on backend
-      await fileApi.syncFiles();
+      const syncResult = await fileApi.syncFiles();
 
-      // Reload files and accounts in parallel after a successful sync.
-      // We do NOT call loadInitialData() here because that sets the global
-      // loading spinner which hides the entire app during reload.
       const [newFiles, newAccounts] = await Promise.all([
-        fileApi.getFiles().catch(err => {
-          console.error('Failed to reload files after sync:', err);
-          return null;
-        }),
-        accountApi.getConnectedAccounts().catch(err => {
-          console.error('Failed to reload accounts after sync:', err);
-          return null;
-        }),
+        fileApi.getFiles(), accountApi.getConnectedAccounts(),
       ]);
+      setFiles(newFiles);
+      setConnectedAccounts(newAccounts);
+      setStorageOverview(await api.getStorageOverview(newFiles, newAccounts));
 
-      if (newFiles !== null) setFiles(newFiles);
-
-      if (newAccounts !== null) {
-        setConnectedAccounts(newAccounts);
-        // Recompute storage overview locally from the freshly loaded data.
-        const filesToUse = newFiles ?? files;
-        const actualFiles = filesToUse.filter(f => !f.isFolder);
-
-        const categories = {
-          photos: { count: 0, size: 0 },
-          videos: { count: 0, size: 0 },
-          documents: { count: 0, size: 0 },
-          other: { count: 0, size: 0 },
-        };
-        actualFiles.forEach(f => {
-          const cat = categories[f.category] ? f.category : 'other';
-          categories[cat].count += 1;
-          categories[cat].size += Number(f.size) || 0;
-        });
-
-        let aggregateTotal = null;
-        let aggregateUsed = null;
-        newAccounts.forEach(acc => {
-          if (acc.totalStorage !== null && acc.usedStorage !== null) {
-            aggregateTotal = (aggregateTotal ?? 0) + acc.totalStorage;
-            aggregateUsed = (aggregateUsed ?? 0) + acc.usedStorage;
-          }
-        });
-
-        setStorageOverview({
-          totalStorage: aggregateTotal,
-          usedStorage: aggregateUsed,
-          availableStorage:
-            aggregateTotal !== null && aggregateUsed !== null
-              ? Math.max(0, aggregateTotal - aggregateUsed)
-              : null,
-          percentage:
-            aggregateTotal !== null && aggregateTotal > 0 && aggregateUsed !== null
-              ? Number(((aggregateUsed / aggregateTotal) * 100).toFixed(1))
-              : null,
-          accounts: newAccounts,
-          categories,
-        });
-      }
-
-      addToast('Google Drive sync completed', 'success');
+      addToast(
+        syncResult?.failedAccounts
+          ? `Synced ${syncResult.syncedAccounts} account(s); ${syncResult.failedAccounts} failed. Reconnect the failed account and try again.`
+          : `Synced ${syncResult?.syncedAccounts ?? newAccounts.length} account(s)`,
+        syncResult?.failedAccounts ? 'error' : 'success'
+      );
     } catch (error) {
       console.error('Google Drive sync failed:', error);
       addToast(
@@ -333,6 +322,14 @@ export function VaultProvider({ children }) {
       setSyncing(false);
     }
   };
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('connected') !== 'google') return;
+    window.history.replaceState({}, document.title, window.location.pathname);
+    handleRescan();
+  // The callback marker exists only once after OAuth; running once avoids a duplicate sync.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   const openPreview = (file) => {
@@ -368,6 +365,7 @@ export function VaultProvider({ children }) {
     theme,
     setTheme,
     selectedFileIds,
+    setSelectedFileIds,
     toggleSelectFile,
     selectAllFiles,
     clearSelection,
@@ -396,6 +394,8 @@ export function VaultProvider({ children }) {
     handleToggleFavorite,
     handleRename,
     handleDelete,
+    handleDownload,
+    handleBatchDownload,
     handleBatchDelete,
     openFolder,
     handleCreateFolder,

@@ -11,7 +11,7 @@ export function InspectorPane() {
     openPreview,
     openFolder,
     setRenameModal,
-    addToast
+    handleDownload
   } = useVault();
 
   if (!isInspectorOpen) return null;
@@ -26,11 +26,6 @@ export function InspectorPane() {
   }
 
   const providerBadge = getProviderBadge(inspectorFile.provider);
-
-  const handleShareLink = () => {
-    navigator.clipboard?.writeText?.(`https://cloudvault.app/f/${inspectorFile.id}`);
-    addToast('CloudVault share link copied to clipboard', 'success');
-  };
 
   return (
     <aside
@@ -122,23 +117,16 @@ export function InspectorPane() {
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={() => addToast(`Downloading ${inspectorFile.name}...`, 'info')}
-          className="h-8 px-2 rounded bg-surface-container hover:bg-surface-container-high text-on-surface font-headline-sm text-headline-sm flex items-center justify-center gap-1 transition-colors"
-        >
-          <span className="material-symbols-outlined text-[15px]">download</span>
-          <span>Download</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={handleShareLink}
-          className="h-8 px-2 rounded bg-surface-container hover:bg-surface-container-high text-on-surface font-body-sm text-body-sm flex items-center justify-center gap-1 transition-colors"
-        >
-          <span className="material-symbols-outlined text-[15px]">link</span>
-          <span>Share Link</span>
-        </button>
+        {!inspectorFile.isFolder && (
+          <button
+            type="button"
+            onClick={() => void handleDownload(inspectorFile)}
+            className="h-8 px-2 rounded bg-surface-container hover:bg-surface-container-high text-on-surface font-headline-sm text-headline-sm flex items-center justify-center gap-1 transition-colors"
+          >
+            <span className="material-symbols-outlined text-[15px]">download</span>
+            <span>Download</span>
+          </button>
+        )}
 
         <button
           type="button"
@@ -191,7 +179,7 @@ export function InspectorPane() {
           <div className="flex items-center justify-between">
             <span className="text-outline">Account</span>
             <span className="text-on-surface font-code-sm text-[11px] truncate max-w-[150px]">
-              {inspectorFile.providerAccount || 'tarun.personal@gmail.com'}
+              {inspectorFile.providerAccount || 'Unavailable'}
             </span>
           </div>
 
@@ -206,20 +194,6 @@ export function InspectorPane() {
         </div>
       </div>
 
-      {/* External Provider Deep Link */}
-      <div className="pt-space-xs mt-auto">
-        <button
-          type="button"
-          onClick={() => addToast(`Redirecting to ${providerBadge.name}...`, 'info')}
-          className="w-full flex items-center justify-between p-space-sm rounded bg-surface-container hover:bg-surface-container-high text-on-surface font-body-sm text-body-sm transition-colors border border-zinc-border/60"
-        >
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[16px] text-primary">cloud</span>
-            <span>Open in {providerBadge.name}</span>
-          </div>
-          <span className="material-symbols-outlined text-[14px] text-outline">open_in_new</span>
-        </button>
-      </div>
     </aside>
   );
 }

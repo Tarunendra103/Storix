@@ -42,13 +42,13 @@ const used = storageOverview?.usedStorage ?? null;
       <div className="flex flex-col flex-1 min-h-0">
         <div className="h-[52px] px-space-base flex items-center justify-between border-b border-surface-container-highest">
           <button type="button" className="flex items-center gap-space-sm cursor-pointer bg-transparent border-0 p-0" onClick={() => handleNavClick('home')}>
-            {/* Authentic CloudVault SVG Logo */}
+            {/* Storix logo */}
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="28" height="28" fill="none" className="shrink-0">
               <rect width="32" height="32" rx="6" fill="#18181B"/>
               <path d="M10 13a4 4 0 0 1 7.7-1.5A3.5 3.5 0 0 1 22 15a3.5 3.5 0 0 1-2.5 3.4M9 19h14M9 22h14" stroke="#FFFFFF" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             <span className="font-headline-md text-headline-md tracking-tight text-on-surface font-semibold">
-              CloudVault
+              Storix
             </span>
           </button>
 

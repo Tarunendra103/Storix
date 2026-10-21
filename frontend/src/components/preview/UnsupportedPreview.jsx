@@ -4,12 +4,8 @@ import { FileTypeIcon } from '../files/FileTypeIcon';
 import { useVault } from '../../context/VaultContext';
 
 export function UnsupportedPreview({ file }) {
-  const { addToast } = useVault();
+  const { handleDownload } = useVault();
   const providerBadge = getProviderBadge(file.provider);
-
-  const handleDownload = () => {
-    addToast(`Downloading ${file.name}...`, 'info');
-  };
 
   return (
     <div className="flex flex-col items-center justify-center h-full w-full p-8 text-center bg-surface-container-low">
@@ -52,7 +48,7 @@ export function UnsupportedPreview({ file }) {
       {/* Primary Action Button */}
       <button
         type="button"
-        onClick={handleDownload}
+        onClick={() => void handleDownload(file)}
         className="h-10 px-6 rounded-lg bg-primary text-on-primary hover:bg-primary-container font-headline-sm text-headline-sm flex items-center gap-2 shadow-sm transition-colors"
       >
         <span className="material-symbols-outlined text-[18px]">download</span>

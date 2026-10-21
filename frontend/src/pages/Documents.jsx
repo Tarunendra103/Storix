@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useVault } from '../context/VaultContext';
 import { FileTable } from '../components/files/FileTable';
+import { BulkActions } from '../components/files/BulkActions';
 
 export function Documents() {
   const { files } = useVault();
   const [docTypeFilter, setDocTypeFilter] = useState('all');
 
-  const docFiles = files.filter(f => f.category === 'documents' || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md'].includes(f.type?.toLowerCase()));
+  const docFiles = files.filter((file) => file.category === 'documents');
 
   const filteredDocs = docFiles.filter(f => {
     if (docTypeFilter === 'all') return true;
@@ -28,8 +29,10 @@ export function Documents() {
           </p>
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <BulkActions files={filteredDocs} />
+          {/* Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto py-1">
           <button
             type="button"
             onClick={() => setDocTypeFilter('all')}
@@ -74,6 +77,7 @@ export function Documents() {
           >
             Presentations
           </button>
+          </div>
         </div>
       </div>
 

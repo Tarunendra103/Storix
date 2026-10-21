@@ -3,6 +3,7 @@ import { useVault } from '../context/VaultContext';
 import { FileTable } from '../components/files/FileTable';
 import { FileGrid } from '../components/files/FileGrid';
 import { InspectorPane } from '../components/layout/InspectorPane';
+import { BulkActions } from '../components/files/BulkActions';
 
 export function Favorites() {
   const { files, viewMode } = useVault();
@@ -12,7 +13,7 @@ export function Favorites() {
   return (
     <div className="flex flex-col w-full gap-space-md animate-in fade-in duration-200">
       {/* Top Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-zinc-border">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-zinc-border">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-primary-fixed flex items-center justify-center text-primary">
             <span className="material-symbols-outlined text-[20px] fill">star</span>
@@ -24,6 +25,7 @@ export function Favorites() {
             </p>
           </div>
         </div>
+        <BulkActions files={favoriteFiles} />
       </div>
 
       <div className="flex w-full items-start gap-space-md">

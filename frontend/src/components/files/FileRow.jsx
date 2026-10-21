@@ -11,7 +11,8 @@ export function FileRow({ file }) {
     inspectorFile,
     setInspectorFile,
     openPreview,
-    openFolder
+    openFolder,
+    handleDownload
   } = useVault();
 
   const isSelected = selectedFileIds.includes(file.id);
@@ -79,7 +80,7 @@ export function FileRow({ file }) {
           )}
           {file.isFolder && (
             <span className="px-1.5 py-0.2 bg-surface-container rounded text-[10px] text-outline shrink-0">
-              {file.itemCount} items
+              Folder
             </span>
           )}
         </div>
@@ -100,7 +101,7 @@ export function FileRow({ file }) {
 
       {/* Type */}
       <td className="px-3 py-2 hidden md:table-cell text-outline truncate">
-        {file.isFolder ? 'Folder' : file.type || 'File'}
+        {file.isFolder ? 'Folder' : file.category || 'File'}
       </td>
 
       {/* Size */}
@@ -129,17 +130,19 @@ export function FileRow({ file }) {
               <span className="material-symbols-outlined text-[16px] block">visibility</span>
             </button>
           )}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              addToast(`Downloading ${file.name}...`, 'info');
-            }}
-            className="p-1 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
-            title="Download"
-          >
-            <span className="material-symbols-outlined text-[16px] block">download</span>
-          </button>
+          {!file.isFolder && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleDownload(file);
+              }}
+              className="p-1 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+              title="Download"
+            >
+              <span className="material-symbols-outlined text-[16px] block">download</span>
+            </button>
+          )}
           <FileContextMenu file={file} />
         </div>
       </td>

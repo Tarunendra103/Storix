@@ -43,17 +43,21 @@ export function getFileExtension(filename = '') {
 }
 
 export function getFileCategory(filename = '', mimeType = '') {
+  const normalizedMimeType = (mimeType || '').toLowerCase();
   const ext = getFileExtension(filename);
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff', 'heic'].includes(ext) || mimeType.startsWith('image/')) {
+  if (normalizedMimeType === 'application/vnd.google-apps.folder') return 'folders';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff', 'heic', 'avif'].includes(ext) || normalizedMimeType.startsWith('image/')) {
     return 'photos';
   }
-  if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv'].includes(ext) || mimeType.startsWith('video/')) {
+  if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'flv', 'm4v'].includes(ext) || normalizedMimeType.startsWith('video/')) {
     return 'videos';
   }
   if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'].includes(ext) ||
-      mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('sheet') || mimeType.includes('presentation') || mimeType.startsWith('text/')) {
+      normalizedMimeType.includes('pdf') || normalizedMimeType.includes('document') || normalizedMimeType.includes('sheet') || normalizedMimeType.includes('presentation') || normalizedMimeType.startsWith('text/')) {
     return 'documents';
   }
+  if (['mp3', 'wav', 'aac', 'flac', 'm4a', 'ogg', 'wma'].includes(ext) || normalizedMimeType.startsWith('audio/')) return 'audio';
+  if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'].includes(ext) || normalizedMimeType.includes('zip') || normalizedMimeType.includes('archive')) return 'archives';
   return 'other';
 }
 
@@ -63,15 +67,15 @@ export function getCategoryStats(files = []) {
     photos: { count: 0, size: 0 },
     videos: { count: 0, size: 0 },
     documents: { count: 0, size: 0 },
+    audio: { count: 0, size: 0 },
+    archives: { count: 0, size: 0 },
     other: { count: 0, size: 0 },
   };
 
   files.forEach((file) => {
     if (file.isFolder || file.is_folder) return;
 
-    const category = (
-      file.category || getFileCategory(file.name, file.mimeType)
-    ).toLowerCase();
+    const category = (file.category || getFileCategory(file.name, file.mimeType)).toLowerCase();
 
     const normalizedCategory = stats[category]
       ? category
@@ -134,6 +138,8 @@ export function getFileIconInfo(file) {
       if (cat === 'photos') return { icon: 'image', colorClass: 'text-primary', label: 'Image' };
       if (cat === 'videos') return { icon: 'movie', colorClass: 'text-secondary', label: 'Video' };
       if (cat === 'documents') return { icon: 'description', colorClass: 'text-on-surface-variant', label: 'Document' };
+      if (cat === 'audio') return { icon: 'audio_file', colorClass: 'text-secondary', label: 'Audio' };
+      if (cat === 'archives') return { icon: 'folder_zip', colorClass: 'text-tertiary-container', label: 'Archive' };
       return { icon: 'draft', colorClass: 'text-outline', label: 'File' };
   }
 
@@ -145,7 +151,7 @@ export function getProviderBadge(provider = '') {
 
   if (name.includes('google') && name.includes('work')) {
     return {
-      name: 'Google Drive #2',
+      name: 'Google Drive',
       dotColor: '#34A853',
       bg: 'bg-[#34A853]',
     };
@@ -153,7 +159,7 @@ export function getProviderBadge(provider = '') {
 
   if (name.includes('google')) {
     return {
-      name: 'Google Drive #1',
+      name: 'Google Drive',
       dotColor: '#4285F4',
       bg: 'bg-[#4285F4]',
     };

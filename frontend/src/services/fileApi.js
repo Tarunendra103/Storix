@@ -1,4 +1,4 @@
-import { apiRequest } from './httpClient';
+import { apiBlobRequest, apiRequest } from './httpClient';
 
 function mapFile(file) {
   const providerMap = {
@@ -53,6 +53,22 @@ export const fileApi = {
     return apiRequest(`/files/${id}`, { method: 'DELETE' });
   },
 
+  async updateFile(id, changes) {
+    const file = await apiRequest(`/files/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(changes),
+    });
+    return mapFile(file);
+  },
+
+  async renameFile(id, name) {
+    return this.updateFile(id, { name });
+  },
+
+  async setFavorite(id, favourite) {
+    return this.updateFile(id, { favourite });
+  },
+
   /**
    * POST /api/files/upload  (multipart/form-data)
    * Required params:
@@ -61,12 +77,12 @@ export const fileApi = {
    *
    * Returns the created FileResponse.
    */
-  async uploadFile(connectedAccountId, multipartFile) {
+  async uploadFile(connectedAccountId, multipartFile, parentId = null) {
     const formData = new FormData();
     formData.append('file', multipartFile);
 
     const file = await apiRequest(
-      `/files/upload?connectedAccountId=${encodeURIComponent(connectedAccountId)}`,
+      `/files/upload?connectedAccountId=${encodeURIComponent(connectedAccountId)}${parentId ? `&parentId=${encodeURIComponent(parentId)}` : ''}`,
       {
         method: 'POST',
         body: formData,
@@ -74,6 +90,30 @@ export const fileApi = {
       }
     );
     return mapFile(file);
+  },
+
+  async createFolder(connectedAccountId, name, parentId = null) {
+    const params = new URLSearchParams({ connectedAccountId: String(connectedAccountId), name });
+    if (parentId) params.set('parentId', String(parentId));
+    return mapFile(await apiRequest(`/files/folders?${params}`, { method: 'POST' }));
+  },
+
+  async getPreviewBlob(id) {
+    return apiBlobRequest(`/files/${id}/preview`);
+  },
+
+  async downloadFile(id, fallbackName) {
+    const { blob, contentDisposition } = await apiBlobRequest(`/files/${id}/download`);
+    const fromHeader = contentDisposition?.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i)?.[1];
+    const fileName = decodeURIComponent(fromHeader || fallbackName || 'download');
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   },
 
   /**

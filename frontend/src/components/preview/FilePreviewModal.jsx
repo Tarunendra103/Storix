@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useVault } from '../../context/VaultContext';
 import { PdfPreview } from './PdfPreview';
 import { ImagePreview } from './ImagePreview';
 import { VideoPreview } from './VideoPreview';
 import { UnsupportedPreview } from './UnsupportedPreview';
 import { formatBytes, getProviderBadge, getFileExtension } from '../../utils/fileUtils';
+import { fileApi } from '../../services/fileApi';
 
 export function FilePreviewModal() {
   const { previewModal, closePreview } = useVault();
@@ -12,7 +13,7 @@ export function FilePreviewModal() {
 
   if (!previewModal.isOpen || !file) return null;
 
-  return <FilePreviewModalContent file={file} onClose={closePreview} />;
+  return <FilePreviewModalContent key={file.id} file={file} onClose={closePreview} />;
 }
 
 function getInitialMode(f) {
@@ -21,13 +22,12 @@ function getInitialMode(f) {
   if (f.category === 'photos' || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'image';
   if (f.category === 'videos' || ['mp4', 'mov', 'avi', 'mkv'].includes(ext)) return 'video';
   if (['pdf'].includes(ext)) return 'pdf';
-  if (['md', 'txt', 'js', 'json', 'html', 'css'].includes(ext)) return 'code';
   return 'unsupported';
 }
 
 function FilePreviewModalContent({ file, onClose }) {
   const { handleToggleFavorite, addToast } = useVault();
-  const [activeMode, setActiveMode] = useState(() => getInitialMode(file));
+  const activeMode = getInitialMode(file);
 
   // Close on Escape key
   useEffect(() => {
@@ -42,17 +42,17 @@ function FilePreviewModalContent({ file, onClose }) {
 
   const providerBadge = getProviderBadge(file.provider);
 
-  const handleDownload = () => {
-    addToast(`Downloading ${file.name}...`, 'info');
+  const handleDownload = async () => {
+    try {
+      await fileApi.downloadFile(file.id, file.name);
+      addToast(`Downloaded ${file.name}`, 'success');
+    } catch (error) {
+      addToast(error.message || 'Download failed', 'error');
+    }
   };
 
   const handlePrint = () => {
     window.print();
-  };
-
-  const handleShare = () => {
-    navigator.clipboard?.writeText?.(`https://cloudvault.app/f/${file.id}`);
-    addToast('Direct link copied to clipboard', 'success');
   };
 
   return (
@@ -90,58 +90,6 @@ function FilePreviewModalContent({ file, onClose }) {
             </div>
           </div>
 
-          {/* Center Format Switcher Pills */}
-          <div className="hidden lg:flex items-center gap-1 bg-surface-container-high p-1 rounded-lg">
-            <button
-              type="button"
-              onClick={() => setActiveMode('pdf')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded font-headline-sm text-xs transition-colors ${
-                activeMode === 'pdf'
-                  ? 'bg-surface-container-lowest text-primary shadow-sm font-semibold'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
-              <span>PDF Document</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMode('image')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded font-headline-sm text-xs transition-colors ${
-                activeMode === 'image'
-                  ? 'bg-surface-container-lowest text-primary shadow-sm font-semibold'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">image</span>
-              <span>Photo</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMode('video')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded font-headline-sm text-xs transition-colors ${
-                activeMode === 'video'
-                  ? 'bg-surface-container-lowest text-primary shadow-sm font-semibold'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">movie</span>
-              <span>Video</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMode('code')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded font-headline-sm text-xs transition-colors ${
-                activeMode === 'code'
-                  ? 'bg-surface-container-lowest text-primary shadow-sm font-semibold'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">code</span>
-              <span>Source / MD</span>
-            </button>
-          </div>
-
           {/* Action Trigger Buttons */}
           <div className="flex items-center gap-1.5">
             <button
@@ -157,16 +105,6 @@ function FilePreviewModalContent({ file, onClose }) {
 
             <button
               type="button"
-              onClick={handleShare}
-              className="h-8 px-2.5 rounded-lg bg-surface-container-lowest text-on-surface hover:bg-surface-container font-label-md text-label-md flex items-center gap-1 transition-colors border border-zinc-border"
-              title="Share"
-            >
-              <span className="material-symbols-outlined text-[16px]">share</span>
-              <span className="hidden sm:inline">Share</span>
-            </button>
-
-            <button
-              type="button"
               onClick={handlePrint}
               className="h-8 px-2.5 rounded-lg bg-surface-container-lowest text-on-surface hover:bg-surface-container font-label-md text-label-md flex items-center gap-1 transition-colors border border-zinc-border hidden sm:flex"
               title="Print"
@@ -177,7 +115,7 @@ function FilePreviewModalContent({ file, onClose }) {
 
             <button
               type="button"
-              onClick={handleDownload}
+              onClick={() => void handleDownload()}
               className="h-8 px-3 rounded-lg bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md flex items-center gap-1 shadow-sm transition-colors"
             >
               <span className="material-symbols-outlined text-[16px]">download</span>
@@ -201,23 +139,6 @@ function FilePreviewModalContent({ file, onClose }) {
           {activeMode === 'pdf' && <PdfPreview file={file} />}
           {activeMode === 'image' && <ImagePreview file={file} />}
           {activeMode === 'video' && <VideoPreview file={file} />}
-          {activeMode === 'code' && (
-            <div className="w-full h-full p-6 overflow-auto font-mono text-sm bg-surface-container-lowest text-on-surface">
-              <pre className="whitespace-pre-wrap leading-relaxed">
-                {file.content || `# Content of ${file.name}
-Uploaded to ${file.provider}
-Size: ${formatBytes(file.size)}
-
-// Sample decrypted view directly from client stream
-{
-  "fileId": "${file.id}",
-  "name": "${file.name}",
-  "provider": "${file.provider}",
-  "checksum": "${file.checksum || 'e4d909c290d0'}"
-}`}
-              </pre>
-            </div>
-          )}
           {activeMode === 'unsupported' && <UnsupportedPreview file={file} />}
         </div>
       </div>

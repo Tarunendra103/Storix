@@ -10,7 +10,7 @@ export function FileContextMenu({ file }) {
     handleToggleFavorite,
     setRenameModal,
     setDeleteModal,
-    addToast
+    handleDownload
   } = useVault();
 
   useEffect(() => {
@@ -37,22 +37,16 @@ export function FileContextMenu({ file }) {
     }
   };
 
-  const handleDownload = (e) => {
+  const onDownload = (e) => {
     e.stopPropagation();
     setIsOpen(false);
-    addToast(`Downloading ${file.name}...`, 'info');
+    void handleDownload(file);
   };
 
   const handleRenameClick = (e) => {
     e.stopPropagation();
     setIsOpen(false);
     setRenameModal({ isOpen: true, file });
-  };
-
-  const handleMoveClick = (e) => {
-    e.stopPropagation();
-    setIsOpen(false);
-    addToast(`Move modal opened for ${file.name}`, 'info');
   };
 
   const handleFavoriteClick = (e) => {
@@ -92,13 +86,15 @@ export function FileContextMenu({ file }) {
             <span>{file.isFolder ? 'Open Folder' : 'Open'}</span>
           </button>
           
-          <button
-            onClick={handleDownload}
-            className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-zinc-hover transition-colors"
-          >
-            <span className="material-symbols-outlined text-[16px] text-outline">download</span>
-            <span>Download</span>
-          </button>
+          {!file.isFolder && (
+            <button
+              onClick={onDownload}
+              className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-zinc-hover transition-colors"
+            >
+              <span className="material-symbols-outlined text-[16px] text-outline">download</span>
+              <span>Download</span>
+            </button>
+          )}
 
           <button
             onClick={handleRenameClick}
@@ -106,14 +102,6 @@ export function FileContextMenu({ file }) {
           >
             <span className="material-symbols-outlined text-[16px] text-outline">drive_file_rename_outline</span>
             <span>Rename</span>
-          </button>
-
-          <button
-            onClick={handleMoveClick}
-            className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-zinc-hover transition-colors"
-          >
-            <span className="material-symbols-outlined text-[16px] text-outline">drive_file_move</span>
-            <span>Move</span>
           </button>
 
           <button

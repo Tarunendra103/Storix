@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useVault } from '../../context/VaultContext';
 import { formatBytes } from '../../utils/fileUtils';
 
@@ -6,13 +6,22 @@ export function UploadModal() {
   const {
     uploadModalOpen,
     setUploadModalOpen,
-    handleUploadComplete
+    handleUploadComplete,
+    connectedAccounts,
+    addToast,
   } = useVault();
 
   const [isDragging, setIsDragging] = useState(false);
   const [uploadQueue, setUploadQueue] = useState([]);
+  const [selectedAccountId, setSelectedAccountId] = useState('');
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!selectedAccountId && connectedAccounts.length) {
+      setSelectedAccountId(String(connectedAccounts[0].id));
+    }
+  }, [connectedAccounts, selectedAccountId]);
 
   if (!uploadModalOpen) return null;
 
@@ -25,56 +34,32 @@ export function UploadModal() {
     setIsDragging(false);
   };
 
-  const startUpload = (fileList) => {
+  const startUpload = async (fileList) => {
+    if (!selectedAccountId) {
+      addToast('Connect a Google Drive account before uploading.', 'error');
+      return;
+    }
     const newItems = Array.from(fileList).map((f, idx) => ({
       id: `queue-${Date.now()}-${idx}`,
       fileObj: f,
       name: f.name,
-      size: f.size || 1024 * 1024 * 2.4,
+      size: f.size,
       mimeType: f.type || 'application/octet-stream',
-      previewUrl: f.type.startsWith('image/') || f.type.startsWith('video/') ? URL.createObjectURL(f) : null,
       progress: 0,
-      status: 'Uploading...'
+      status: 'Waiting to upload'
     }));
 
     setUploadQueue(prev => [...prev, ...newItems]);
 
-    // Simulate realistic upload progress
-    newItems.forEach((item) => {
-      let currentProgress = 0;
-      const interval = setInterval(() => {
-        currentProgress += Math.floor(Math.random() * 18) + 12;
-        if (currentProgress >= 100) {
-          currentProgress = 100;
-          clearInterval(interval);
-
-          setUploadQueue(prev =>
-            prev.map(q => q.id === item.id ? { ...q, progress: 100, status: 'Completed' } : q)
-          );
-
-          // Notify context of completed upload
-          handleUploadComplete({
-            name: item.name,
-            size: item.size,
-            mimeType: item.mimeType,
-            previewUrl: item.previewUrl
-          });
-
-          // Auto-remove from queue after 2s
-          setTimeout(() => {
-            setUploadQueue(prev => prev.filter(q => q.id !== item.id));
-          }, 2000);
-        } else {
-          setUploadQueue(prev =>
-            prev.map(q => q.id === item.id ? {
-              ...q,
-              progress: currentProgress,
-              status: currentProgress > 80 ? 'Encrypting & routing...' : `${currentProgress}% Uploading...`
-            } : q)
-          );
-        }
-      }, 350);
-    });
+    for (const item of newItems) {
+      setUploadQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'Uploading to Google Drive…' } : q));
+      try {
+        await handleUploadComplete({ fileObj: item.fileObj, connectedAccountId: Number(selectedAccountId) });
+        setUploadQueue(prev => prev.map(q => q.id === item.id ? { ...q, progress: 100, status: 'Uploaded' } : q));
+      } catch (error) {
+        setUploadQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: error.message || 'Upload failed' } : q));
+      }
+    }
   };
 
   const handleDrop = (e) => {
@@ -98,7 +83,7 @@ export function UploadModal() {
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-border bg-surface-container">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-primary text-[22px]">cloud_upload</span>
-            <h2 id="upload-modal-title" className="font-headline-md text-headline-md text-on-surface">Upload to CloudVault</h2>
+            <h2 id="upload-modal-title" className="font-headline-md text-headline-md text-on-surface">Upload to Storix</h2>
           </div>
           <button
             type="button"
@@ -130,7 +115,7 @@ export function UploadModal() {
               Drag & Drop files here, or <span className="text-primary underline">browse</span>
             </p>
             <p className="font-body-sm text-body-sm text-on-surface-variant">
-              Files will be securely encrypted and automatically assigned to the optimal cloud provider.
+              Files are uploaded to the selected Google Drive account. Storix stores only their metadata.
             </p>
 
             <input
@@ -150,6 +135,19 @@ export function UploadModal() {
             />
           </div>
 
+          <label className="flex flex-col gap-1.5 font-label-sm text-label-sm text-outline">
+            Upload destination
+            <select
+              value={selectedAccountId}
+              onChange={(event) => setSelectedAccountId(event.target.value)}
+              disabled={!connectedAccounts.length}
+              className="h-9 px-3 rounded border border-zinc-border bg-surface-container text-on-surface"
+            >
+              {!connectedAccounts.length && <option value="">No connected Google Drive accounts</option>}
+              {connectedAccounts.map((account) => <option key={account.id} value={account.id}>{account.name} — {account.accountEmail}</option>)}
+            </select>
+          </label>
+
           {/* Quick Select Buttons */}
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -166,7 +164,7 @@ export function UploadModal() {
               className="h-9 rounded-lg border border-zinc-border hover:bg-surface-container text-on-surface font-headline-sm text-headline-sm flex items-center justify-center gap-2 transition-colors"
             >
               <span className="material-symbols-outlined text-[18px] text-[#f59e0b]">folder</span>
-              <span>Upload Folder</span>
+              <span>Upload Folder Contents</span>
             </button>
           </div>
 
@@ -214,7 +212,7 @@ export function UploadModal() {
         <div className="px-6 py-3 bg-surface-container border-t border-zinc-border flex items-center justify-between text-outline font-label-sm text-label-sm">
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>Zero-trust cloud routing active</span>
+            <span>Files are stored in the selected Google Drive account</span>
           </div>
           <button
             type="button"

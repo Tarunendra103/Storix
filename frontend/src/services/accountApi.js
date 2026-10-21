@@ -16,16 +16,10 @@ const PROVIDER_COLORS = {
 
 /**
  * Derives a short label from the account email.
- * e.g. "tarun.personal@gmail.com" → "Personal"
- *      "tarun.k@acmelabs.io"      → "Work"
- *      "tarun.k@outlook.com"      → "Personal"
+ * Uses the actual email domain as a compact, non-speculative account label.
  */
 function deriveLabel(accountEmail = '') {
-  const email = accountEmail.toLowerCase();
-  if (email.includes('work') || email.includes('acme') || email.includes('corp') || email.includes('io')) {
-    return 'Work';
-  }
-  return 'Personal';
+  return accountEmail.split('@')[1] || 'Google Drive';
 }
 
 /**
@@ -60,8 +54,9 @@ function mapAccount(account) {
     // Brand colour for the storage bar segments
     color: PROVIDER_COLORS[providerKey] || '#737686',
 
-    // All accounts returned by the backend are connected and active
-    status: 'Active',
+    // The backend returns configured connected accounts; it does not claim a
+    // live provider-health check for each rendered card.
+    status: 'Connected',
 
     // Quota values: preserve null so callers can distinguish "unknown" from "zero"
     totalStorage: account.totalStorage ?? null,
@@ -79,5 +74,9 @@ export const accountApi = {
   async connectGoogle() {
     const response = await apiRequest('/accounts/google/connect');
     window.location.href = response.authorizationUrl;
+  },
+
+  async disconnectAccount(id) {
+    return apiRequest(`/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 };

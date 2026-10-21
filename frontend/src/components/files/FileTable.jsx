@@ -129,7 +129,7 @@ export function FileTable({ files = [], emptyMessage = 'No files found' }) {
         <div className="flex items-center gap-3">
           <span>{files.length} items ({folderCount} folders, {fileCount} files)</span>
           <span className="w-1 h-1 rounded-full bg-outline hidden sm:inline-block"></span>
-          <span className="hidden sm:inline-block">Unified index across all connected clouds</span>
+          <span className="hidden sm:inline-block">Synchronized Google Drive metadata</span>
         </div>
         <div className="font-code-sm text-code-sm tabular-nums text-on-surface-variant">
           {formatBytes(totalSize)} total size
