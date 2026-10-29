@@ -240,6 +240,23 @@ public class FileService {
         );
 
         fileRepository.delete(file);
+
+        // The Drive operation has completed, so local metadata can now be
+        // removed. Quota is supplementary; a delayed quota response must not
+        // resurrect metadata for a file already deleted in Drive.
+        try {
+            googleDriveProvider.refreshStorageQuota(file.getConnectedAccount());
+        } catch (RuntimeException exception) {
+            logger.warn("Deleted fileId: {} but could not refresh quota for connectedAccountId: {}",
+                    fileId, file.getConnectedAccount().getId());
+        }
+    }
+
+    /** Validates provider access before a streaming response commits HTTP 200. */
+    public void verifyFileContentAccess(Long fileId, Long userId) {
+        File file = getFileEntity(fileId, userId);
+        googleDriveProvider.verifyContentAccess(
+                file.getConnectedAccount().getId(), file.getProviderFileId());
     }
 
 

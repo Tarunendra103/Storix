@@ -6,6 +6,7 @@ import com.google.api.client.http.HttpTransport;
 import com.google.api.client.http.InputStreamContent;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.drive.Drive;
+import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.FileList;
 import com.storix.storix.account.entity.ConnectedAccount;
@@ -13,6 +14,7 @@ import com.storix.storix.account.repository.ConnectedAccountRepository;
 import com.storix.storix.common.Enums.StorageProvider;
 import com.storix.storix.file.dto.ProviderFile;
 import com.storix.storix.file.exception.ResourceNotFoundException;
+import com.storix.storix.file.exception.CloudProviderException;
 import com.storix.storix.file.provider.CloudStorageProvider;
 import com.storix.storix.file.service.FileCategory;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +22,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.client.RestClientException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -164,11 +169,7 @@ public class GoogleDriveProvider implements CloudStorageProvider {
             return files;
 
         } catch (IOException e) {
-
-            throw new RuntimeException(
-                    "Failed to fetch Google Drive files",
-                    e
-            );
+            throw translateDriveException("list files", account, e);
         }
     }
     @Override
@@ -220,10 +221,7 @@ public class GoogleDriveProvider implements CloudStorageProvider {
             }
 
         } catch (IOException e) {
-            throw new RuntimeException(
-                    "Failed to download Google Drive file",
-                    e
-            );
+            throw translateDriveException("download file", account, e);
         }
     }
 
@@ -254,11 +252,23 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     .execute();
 
         } catch (IOException e) {
-            logger.error("Failed to fetch Google Drive files for accountId: {}", account.getId(), e);
-            throw new RuntimeException(
-                    "Failed to fetch Google Drive files",
-                    e
-            );
+            throw translateDriveException("delete file", account, e);
+        }
+    }
+
+    /**
+     * Performs the Drive lookup before a controller starts streaming bytes.
+     * It intentionally does not download the content, avoiding an unnecessary
+     * in-memory copy while still surfacing provider failures with an HTTP error.
+     */
+    public void verifyContentAccess(Long connectedAccountId, String providerFileId) {
+        ConnectedAccount account = requireGoogleAccount(connectedAccountId);
+        try {
+            createDriveClient(account).files().get(providerFileId)
+                    .setFields("id,mimeType")
+                    .execute();
+        } catch (IOException e) {
+            throw translateDriveException("access file content", account, e);
         }
     }
 
@@ -331,11 +341,7 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     .build();
 
         } catch (IOException e) {
-
-            throw new RuntimeException(
-                    "Failed to upload file to Google Drive",
-                    e
-            );
+            throw translateDriveException("upload file", account, e);
         }
     }
 
@@ -353,7 +359,7 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     .execute();
             return toProviderFile(updated, account.getId());
         } catch (IOException e) {
-            throw new RuntimeException("Failed to rename Google Drive file", e);
+            throw translateDriveException("rename file", account, e);
         }
     }
 
@@ -373,7 +379,7 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     .execute();
             return toProviderFile(created, account.getId());
         } catch (IOException e) {
-            throw new RuntimeException("Failed to create Google Drive folder", e);
+            throw translateDriveException("create folder", account, e);
         }
     }
 
@@ -423,11 +429,7 @@ public class GoogleDriveProvider implements CloudStorageProvider {
             return resultFiles;
 
         } catch (IOException e) {
-
-            throw new RuntimeException(
-                    "Failed to fetch files from Google Drive folder",
-                    e
-            );
+            throw translateDriveException("list folder files", account, e);
         }
     }
 
@@ -443,10 +445,7 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     .getId();
 
         } catch (IOException e) {
-            throw new RuntimeException(
-                    "Failed to get Google Drive root folder",
-                    e
-            );
+            throw translateDriveException("get root folder", account, e);
         }
     }
     public String getRootFolderIdForAccount(
@@ -511,10 +510,7 @@ public class GoogleDriveProvider implements CloudStorageProvider {
             connectedAccountRepository.save(account);
 
         } catch (IOException e) {
-            throw new RuntimeException(
-                    "Failed to fetch Google Drive storage quota",
-                    e
-            );
+            throw translateDriveException("fetch storage quota", account, e);
         }
     }
 
@@ -532,10 +528,8 @@ public class GoogleDriveProvider implements CloudStorageProvider {
         String refreshToken = currentAccount.getRefreshToken();
 
         if (refreshToken == null || refreshToken.isBlank()) {
-            throw new IllegalStateException(
-                    "Google access token expired and no refresh token exists. "
-                            + "Reconnect the Google account."
-            );
+            throw new CloudProviderException(HttpStatus.CONFLICT,
+                    "The Google Drive connection has expired. Reconnect the account and try again.", null);
         }
 
         MultiValueMap<String, String> formData =
@@ -546,18 +540,30 @@ public class GoogleDriveProvider implements CloudStorageProvider {
         formData.add("refresh_token", refreshToken);
         formData.add("grant_type", "refresh_token");
 
-        Map<String, Object> response = restClient
-                .post()
-                .uri(tokenUri)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(formData)
-                .retrieve()
-                .body(Map.class);
+        Map<String, Object> response;
+        try {
+            response = restClient
+                    .post()
+                    .uri(tokenUri)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(formData)
+                    .retrieve()
+                    .body(Map.class);
+        } catch (RestClientResponseException exception) {
+            logger.warn("Google token refresh failed for connectedAccountId: {} with HTTP {}",
+                    currentAccount.getId(), exception.getStatusCode().value());
+            throw new CloudProviderException(HttpStatus.CONFLICT,
+                    "The Google Drive connection needs to be reconnected.", exception);
+        } catch (RestClientException exception) {
+            logger.warn("Google token refresh was unavailable for connectedAccountId: {} ({})",
+                    currentAccount.getId(), exception.getClass().getSimpleName());
+            throw new CloudProviderException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Google Drive is temporarily unavailable. Please try again.", exception);
+        }
 
         if (response == null || response.get("access_token") == null) {
-            throw new IllegalStateException(
-                    "Google did not return a refreshed access token."
-            );
+            throw new CloudProviderException(HttpStatus.CONFLICT,
+                    "The Google Drive connection needs to be reconnected.", null);
         }
 
         currentAccount.setAccessToken(
@@ -578,6 +584,35 @@ public class GoogleDriveProvider implements CloudStorageProvider {
         account.setAccessToken(saved.getAccessToken());
         account.setExpiresAt(saved.getExpiresAt());
         }
+    }
+
+    private CloudProviderException translateDriveException(
+            String operation, ConnectedAccount account, IOException exception) {
+        if (exception instanceof GoogleJsonResponseException googleException) {
+            int statusCode = googleException.getStatusCode();
+            logger.warn("Google Drive {} failed for connectedAccountId: {} with HTTP {}",
+                    operation, account.getId(), statusCode);
+            if (statusCode == 401) {
+                return new CloudProviderException(HttpStatus.CONFLICT,
+                        "The Google Drive connection has expired. Reconnect the account and try again.", exception);
+            }
+            if (statusCode == 403) {
+                return new CloudProviderException(HttpStatus.FORBIDDEN,
+                        "Google Drive denied access to this file. Check the connected account's permissions.", exception);
+            }
+            if (statusCode == 404) {
+                return new CloudProviderException(HttpStatus.NOT_FOUND,
+                        "This file no longer exists in Google Drive. Sync the account to update Storix.", exception);
+            }
+            if (statusCode == 429 || statusCode >= 500) {
+                return new CloudProviderException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "Google Drive is temporarily unavailable. Please try again.", exception);
+            }
+        }
+        logger.warn("Google Drive {} failed for connectedAccountId: {} ({})",
+                operation, account.getId(), exception.getClass().getSimpleName());
+        return new CloudProviderException(HttpStatus.BAD_GATEWAY,
+                "Google Drive could not complete this request. Please try again.", exception);
     }
 
     }

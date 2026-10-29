@@ -2,7 +2,6 @@ package com.storix.storix.file.controller;
 
 import com.storix.storix.file.dto.*;
 import com.storix.storix.file.entity.File;
-import com.storix.storix.file.provider.google.GoogleDriveProvider;
 import com.storix.storix.file.service.FileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +23,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class FileController {
     private final FileService fileService;
-    private final GoogleDriveProvider googleDriveProvider;
 
 
 
@@ -91,8 +89,12 @@ public class FileController {
         Long userId = Long.parseLong(authentication.getName());
         File file = fileService.getFileEntity(id, userId);
         if ("application/vnd.google-apps.folder".equalsIgnoreCase(file.getMimeType())) {
-            throw new IllegalArgumentException("Folders cannot be downloaded");
+            throw new IllegalArgumentException("Folders cannot be previewed or downloaded");
         }
+        // Streaming failures occur after response headers have been committed.
+        // Probe first so expired credentials, permissions, and missing Drive
+        // files are returned as actionable JSON errors instead of broken blobs.
+        fileService.verifyFileContentAccess(id, userId);
         DownloadMetadata metadata = downloadMetadata(file);
         StreamingResponseBody stream = outputStream -> fileService.downloadFile(id, userId, outputStream);
         ContentDisposition disposition = (inline ? ContentDisposition.inline() : ContentDisposition.attachment())

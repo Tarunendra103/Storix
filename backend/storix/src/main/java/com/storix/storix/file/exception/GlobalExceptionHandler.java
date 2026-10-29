@@ -46,6 +46,13 @@ public class GlobalExceptionHandler {
                     HttpStatus.CONFLICT.value(), exception.getMessage(), LocalDateTime.now()));
         }
 
+        @ExceptionHandler(CloudProviderException.class)
+        public ResponseEntity<ApiError> handleCloudProviderFailure(CloudProviderException exception) {
+            HttpStatus status = exception.getStatus();
+            return ResponseEntity.status(status).body(new ApiError(
+                    status.value(), exception.getMessage(), LocalDateTime.now()));
+        }
+
         @ExceptionHandler(RuntimeException.class)
         public ResponseEntity<ApiError> handleProviderFailure(RuntimeException exception) {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ApiError(
