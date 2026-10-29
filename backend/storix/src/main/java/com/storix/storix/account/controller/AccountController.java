@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
@@ -54,9 +55,18 @@ public class AccountController {
     ) {
         googleOAuthService.handleCallback(code, state);
 
+        URI destination = UriComponentsBuilder.fromUriString(frontendUrl)
+                .queryParam("connected", "google")
+                .build()
+                .toUri();
         return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create(frontendUrl + "/"))
+                .location(destination)
                 .build();
+    }
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> disconnect(@PathVariable Long id, Authentication authentication) {
+        accountService.disconnect(Long.parseLong(authentication.getName()), id);
+        return ResponseEntity.noContent().build();
     }
     }
 

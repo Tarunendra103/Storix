@@ -25,7 +25,8 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/login",
-                                "/api/accounts/google/callback"
+                                "/api/accounts/google/callback",
+                                "/actuator/health"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

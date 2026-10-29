@@ -2,6 +2,7 @@ package com.storix.storix.file.provider.google;
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.HttpRequestInitializer;
+import com.google.api.client.http.HttpTransport;
 import com.google.api.client.http.InputStreamContent;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.drive.Drive;
@@ -13,7 +14,10 @@ import com.storix.storix.common.Enums.StorageProvider;
 import com.storix.storix.file.dto.ProviderFile;
 import com.storix.storix.file.exception.ResourceNotFoundException;
 import com.storix.storix.file.provider.CloudStorageProvider;
+import com.storix.storix.file.service.FileCategory;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -23,15 +27,20 @@ import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.security.GeneralSecurityException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
 public class GoogleDriveProvider implements CloudStorageProvider {
+
+    private final Map<Long, Object> tokenRefreshLocks = new ConcurrentHashMap<>();
+    private volatile HttpTransport httpTransport;
 
     @Value("${google.oauth.client-id}")
     private String clientId;
@@ -45,18 +54,19 @@ public class GoogleDriveProvider implements CloudStorageProvider {
     private final RestClient restClient = RestClient.create();
 
     private final ConnectedAccountRepository connectedAccountRepository;
+    private static final Logger logger = LoggerFactory.getLogger(GoogleDriveProvider.class);
 
     private Drive createDriveClient(ConnectedAccount account) {
         refreshAccessTokenIfNeeded(account);
         try {
-            HttpRequestInitializer requestInitializer =
-                    request -> request.getHeaders()
-                            .setAuthorization(
-                                    "Bearer " + account.getAccessToken()
-                            );
+            HttpRequestInitializer requestInitializer = request -> {
+                request.getHeaders().setAuthorization("Bearer " + account.getAccessToken());
+                request.setConnectTimeout(10_000);
+                request.setReadTimeout(60_000);
+            };
 
             return new Drive.Builder(
-                    GoogleNetHttpTransport.newTrustedTransport(),
+                    getHttpTransport(),
                     GsonFactory.getDefaultInstance(),
                     requestInitializer
             )
@@ -68,6 +78,20 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     "Failed to create Google Drive client",
                     e
             );
+        }
+    }
+
+    /** Reuse the trusted transport instead of rebuilding TLS configuration per Drive call. */
+    private HttpTransport getHttpTransport() throws GeneralSecurityException, IOException {
+        HttpTransport current = httpTransport;
+        if (current != null) {
+            return current;
+        }
+        synchronized (this) {
+            if (httpTransport == null) {
+                httpTransport = GoogleNetHttpTransport.newTrustedTransport();
+            }
+            return httpTransport;
         }
     }
 
@@ -88,7 +112,14 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                         .list()
                         .setPageSize(100)
                         .setPageToken(pageToken)
-                        .setQ("trashed = false")
+                        .setSpaces("drive")
+                        .setCorpora("user")
+                        .setIncludeItemsFromAllDrives(true)
+                        .setSupportsAllDrives(true)
+                        // The user corpus also includes files shared with the
+                        // account. Storix is a personal catalog, so only sync
+                        // Drive items actually owned by this connected account.
+                        .setQ("'me' in owners and trashed = false")
                         .setFields(
                                 "nextPageToken," +
                                         "files(id,name,mimeType,size,parents," +
@@ -96,7 +127,11 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                         )
                         .execute();
 
-                for (File file : result.getFiles()) {
+                List<File> pageFiles = result.getFiles();
+                if (pageFiles == null) {
+                    pageFiles = List.of();
+                }
+                for (File file : pageFiles) {
 
                     files.add(
                             ProviderFile.builder()
@@ -105,12 +140,13 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                                     .mimeType(file.getMimeType())
                                     .size(file.getSize())
                                     .category(
-                                            determineCategory(
-                                                    file.getMimeType()
+                                            FileCategory.classify(
+                                                    file.getMimeType(),
+                                                    file.getName()
                                             )
                                     )
                                     .providerFolderId(
-                                            file.getParents() != null
+                                            file.getParents() != null && !file.getParents().isEmpty()
                                                     ? file.getParents().get(0)
                                                     : null
                                     )
@@ -135,50 +171,11 @@ public class GoogleDriveProvider implements CloudStorageProvider {
             );
         }
     }
-    private String determineCategory(String mimeType) {
-
-        if (mimeType == null) {
-            return "OTHER";
-        }
-
-        if (mimeType.startsWith("image/")) {
-            return "PHOTOS";
-        }
-
-        if (mimeType.startsWith("video/")) {
-            return "VIDEOS";
-        }
-
-        if (mimeType.startsWith("text/")
-                || mimeType.contains("pdf")
-                || mimeType.contains("document")
-                || mimeType.contains("spreadsheet")
-                || mimeType.contains("presentation")) {
-            return "DOCUMENTS";
-        }
-
-        if (mimeType.equals(
-                "application/vnd.google-apps.folder")) {
-            return "FOLDERS";
-        }
-
-        return "OTHER";
-    }
-
     @Override
-    public ProviderFile getFile(
-            Long userId,
-            String providerFileId
-    ) {
-        throw new UnsupportedOperationException(
-                "Get file not implemented yet"
-        );
-    }
-
-    @Override
-    public byte[] downloadFile(
+    public void downloadFile(
             Long connectedAccountId,
-            String providerFileId
+            String providerFileId,
+            OutputStream outputStream
     ) {
         ConnectedAccount account =
                 connectedAccountRepository.findById(connectedAccountId)
@@ -197,14 +194,30 @@ public class GoogleDriveProvider implements CloudStorageProvider {
         Drive drive = createDriveClient(account);
 
         try {
-            java.io.ByteArrayOutputStream outputStream =
-                    new java.io.ByteArrayOutputStream();
+            File metadata = drive.files().get(providerFileId)
+                    .setFields("id, name, mimeType")
+                    .execute();
 
-            drive.files()
-                    .get(providerFileId)
-                    .executeMediaAndDownloadTo(outputStream);
+            String mimeType = metadata.getMimeType();
 
-            return outputStream.toByteArray();
+            if (mimeType != null && mimeType.startsWith("application/vnd.google-apps.")) {
+                String exportMimeType = "application/pdf";
+                if (mimeType.contains("spreadsheet")) {
+                    exportMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                } else if (mimeType.contains("presentation")) {
+                    exportMimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+                } else if (mimeType.contains("document")) {
+                    exportMimeType = "application/pdf";
+                }
+
+                drive.files()
+                        .export(providerFileId, exportMimeType)
+                        .executeMediaAndDownloadTo(outputStream);
+            } else {
+                drive.files()
+                        .get(providerFileId)
+                        .executeMediaAndDownloadTo(outputStream);
+            }
 
         } catch (IOException e) {
             throw new RuntimeException(
@@ -241,8 +254,9 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     .execute();
 
         } catch (IOException e) {
+            logger.error("Failed to fetch Google Drive files for accountId: {}", account.getId(), e);
             throw new RuntimeException(
-                    "Failed to delete Google Drive file",
+                    "Failed to fetch Google Drive files",
                     e
             );
         }
@@ -254,7 +268,8 @@ public class GoogleDriveProvider implements CloudStorageProvider {
             Long connectedAccountId,
             String fileName,
             String mimeType,
-            InputStream inputStream
+            InputStream inputStream,
+            String providerFolderId
     ) {
 
         ConnectedAccount account =
@@ -277,6 +292,9 @@ public class GoogleDriveProvider implements CloudStorageProvider {
 
             File metadata = new File()
                     .setName(fileName);
+            if (providerFolderId != null && !providerFolderId.isBlank()) {
+                metadata.setParents(List.of(providerFolderId));
+            }
 
             InputStreamContent mediaContent =
                     new InputStreamContent(
@@ -299,12 +317,13 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     .mimeType(uploadedFile.getMimeType())
                     .size(uploadedFile.getSize())
                     .category(
-                            determineCategory(
-                                    uploadedFile.getMimeType()
+                            FileCategory.classify(
+                                    uploadedFile.getMimeType(),
+                                    uploadedFile.getName()
                             )
                     )
                     .providerFolderId(
-                            uploadedFile.getParents() != null
+                            uploadedFile.getParents() != null && !uploadedFile.getParents().isEmpty()
                                     ? uploadedFile.getParents().get(0)
                                     : null
                     )
@@ -322,100 +341,48 @@ public class GoogleDriveProvider implements CloudStorageProvider {
 
     @Override
     public ProviderFile renameFile(
-            Long userId,
+            Long connectedAccountId,
             String providerFileId,
             String newName
     ) {
-        throw new UnsupportedOperationException(
-                "Rename not implemented yet"
-        );
-    }
-
-    @Override
-    public ProviderFile createFolder(
-            Long userId,
-            String folderName
-    ) {
-        throw new UnsupportedOperationException(
-                "Create folder not implemented yet"
-        );
-    }
-
-    @Override
-    public Long getTotalStorage(Long userId) {
-        return 0L;
-    }
-
-    @Override
-    public Long getUsedStorage(Long userId) {
-        return 0L;
-    }
-
-
-    public List<String> getExistingFileIds(
-            ConnectedAccount account
-    ) {
-
-        Drive drive = createDriveClient(account);
-
-        List<String> fileIds = new ArrayList<>();
-
+        ConnectedAccount account = requireGoogleAccount(connectedAccountId);
         try {
-
-            String pageToken = null;
-
-            do {
-
-                FileList result = drive.files()
-                        .list()
-                        .setPageSize(100)
-                        .setPageToken(pageToken)
-                        .setQ("trashed = false")
-                        .setFields("nextPageToken,files(id)")
-                        .execute();
-
-                fileIds.addAll(
-                        result.getFiles()
-                                .stream()
-                                .map(File::getId)
-                                .toList()
-                );
-
-                pageToken = result.getNextPageToken();
-
-            } while (pageToken != null);
-
-            return fileIds;
-
+            File updated = createDriveClient(account).files()
+                    .update(providerFileId, new File().setName(newName))
+                    .setFields("id,name,mimeType,size,parents")
+                    .execute();
+            return toProviderFile(updated, account.getId());
         } catch (IOException e) {
-
-            throw new RuntimeException(
-                    "Failed to fetch Google Drive file IDs",
-                    e
-            );
+            throw new RuntimeException("Failed to rename Google Drive file", e);
         }
     }
 
+    @Override
+    public ProviderFile createFolder(Long connectedAccountId, String folderName, String providerFolderId) {
+        ConnectedAccount account = requireGoogleAccount(connectedAccountId);
+        File metadata = new File()
+                .setName(folderName)
+                .setMimeType("application/vnd.google-apps.folder");
+        if (providerFolderId != null && !providerFolderId.isBlank()) {
+            metadata.setParents(List.of(providerFolderId));
+        }
+        try {
+            File created = createDriveClient(account).files()
+                    .create(metadata)
+                    .setFields("id,name,mimeType,size,parents")
+                    .execute();
+            return toProviderFile(created, account.getId());
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create Google Drive folder", e);
+        }
+    }
 
     @Override
     public List<ProviderFile> listFiles(
             Long connectedAccountId,
             String providerFolderId
     ) {
-
-        ConnectedAccount account =
-                connectedAccountRepository.findById(connectedAccountId)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        "Connected Google account not found"
-                                )
-                        );
-
-        if (account.getProvider() != StorageProvider.GOOGLE_DRIVE) {
-            throw new IllegalArgumentException(
-                    "Connected account is not Google Drive"
-            );
-        }
+        ConnectedAccount account = requireGoogleAccount(connectedAccountId);
 
         Drive drive = createDriveClient(account);
 
@@ -429,45 +396,31 @@ public class GoogleDriveProvider implements CloudStorageProvider {
 
                 query =
                         "'" + rootId + "' in parents " +
-                                "and trashed = false";
+                                "and 'me' in owners and trashed = false";
 
             } else {
 
                 query =
                         "'" + providerFolderId + "' in parents " +
-                                "and trashed = false";
+                                "and 'me' in owners and trashed = false";
             }
 
-            FileList result = drive.files()
-                    .list()
-                    .setQ(query)
-                    .setPageSize(100)
-                    .setFields(
-                            "files(id,name,mimeType,size,parents,createdTime,modifiedTime)"
-                    )
-                    .execute();
-
-            return result.getFiles()
-                    .stream()
-                    .map(file -> ProviderFile.builder()
-                            .providerFileId(file.getId())
-                            .name(file.getName())
-                            .mimeType(file.getMimeType())
-                            .size(file.getSize())
-                            .category(
-                                    determineCategory(
-                                            file.getMimeType()
-                                    )
-                            )
-                            .providerFolderId(
-                                    file.getParents() != null
-                                            ? file.getParents().get(0)
-                                            : null
-                            )
-                            .connectedAccountId(account.getId())
-                            .build()
-                    )
-                    .toList();
+            List<ProviderFile> resultFiles = new ArrayList<>();
+            String pageToken = null;
+            do {
+                FileList result = drive.files().list()
+                        .setQ(query).setPageSize(100).setPageToken(pageToken)
+                        .setSpaces("drive").setCorpora("user")
+                        .setIncludeItemsFromAllDrives(true).setSupportsAllDrives(true)
+                        .setFields("nextPageToken,files(id,name,mimeType,size,parents,createdTime,modifiedTime)")
+                        .execute();
+                if (result.getFiles() != null) {
+                    resultFiles.addAll(result.getFiles().stream()
+                            .map(file -> toProviderFile(file, account.getId())).toList());
+                }
+                pageToken = result.getNextPageToken();
+            } while (pageToken != null);
+            return resultFiles;
 
         } catch (IOException e) {
 
@@ -512,6 +465,23 @@ public class GoogleDriveProvider implements CloudStorageProvider {
         return getRootFolderId(account);
     }
 
+    private ConnectedAccount requireGoogleAccount(Long connectedAccountId) {
+        ConnectedAccount account = connectedAccountRepository.findById(connectedAccountId)
+                .orElseThrow(() -> new ResourceNotFoundException("Connected Google account not found"));
+        if (account.getProvider() != StorageProvider.GOOGLE_DRIVE) {
+            throw new IllegalArgumentException("Connected account is not Google Drive");
+        }
+        return account;
+    }
+
+    private ProviderFile toProviderFile(File file, Long connectedAccountId) {
+        return ProviderFile.builder()
+                .providerFileId(file.getId()).name(file.getName()).mimeType(file.getMimeType())
+                .size(file.getSize()).category(FileCategory.classify(file.getMimeType(), file.getName()))
+                .providerFolderId(file.getParents() != null && !file.getParents().isEmpty() ? file.getParents().get(0) : null)
+                .connectedAccountId(connectedAccountId).build();
+    }
+
     public void refreshStorageQuota(ConnectedAccount account) {
 
         Drive drive = createDriveClient(account);
@@ -550,15 +520,16 @@ public class GoogleDriveProvider implements CloudStorageProvider {
 
 
     private void refreshAccessTokenIfNeeded(ConnectedAccount account) {
+        Object lock = tokenRefreshLocks.computeIfAbsent(account.getId(), unused -> new Object());
+        synchronized (lock) {
+            ConnectedAccount currentAccount = connectedAccountRepository.findById(account.getId()).orElse(account);
+            if (currentAccount.getExpiresAt() != null && currentAccount.getExpiresAt().isAfter(LocalDateTime.now().plusMinutes(1))) {
+                account.setAccessToken(currentAccount.getAccessToken());
+                account.setExpiresAt(currentAccount.getExpiresAt());
+                return;
+            }
 
-        // Refresh shortly before expiration.
-        if (account.getExpiresAt() != null
-                && account.getExpiresAt().isAfter(
-                LocalDateTime.now().plusMinutes(1))) {
-            return;
-        }
-
-        String refreshToken = account.getRefreshToken();
+        String refreshToken = currentAccount.getRefreshToken();
 
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new IllegalStateException(
@@ -589,22 +560,24 @@ public class GoogleDriveProvider implements CloudStorageProvider {
             );
         }
 
-        account.setAccessToken(
+        currentAccount.setAccessToken(
                 (String) response.get("access_token")
         );
 
         Number expiresIn = (Number) response.get("expires_in");
 
         if (expiresIn != null) {
-            account.setExpiresAt(
+            currentAccount.setExpiresAt(
                     LocalDateTime.now()
                             .plusSeconds(expiresIn.longValue())
             );
         }
 
-        account.setUpdatedAt(LocalDateTime.now());
-
-        connectedAccountRepository.save(account);
+        currentAccount.setUpdatedAt(LocalDateTime.now());
+        ConnectedAccount saved = connectedAccountRepository.save(currentAccount);
+        account.setAccessToken(saved.getAccessToken());
+        account.setExpiresAt(saved.getExpiresAt());
+        }
     }
 
     }

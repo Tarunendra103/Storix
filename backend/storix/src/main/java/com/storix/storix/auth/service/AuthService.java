@@ -58,7 +58,7 @@ public class AuthService {
         Instant now = Instant.now();
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer("cloudvault")
+                .issuer("storix")
                 .issuedAt(now)
                 .expiresAt(now.plusSeconds(60 * 60))
                 .subject(user.getId().toString())
@@ -81,7 +81,7 @@ public class AuthService {
         Instant now = Instant.now();
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer("cloudvault")
+                .issuer("storix")
                 .issuedAt(now)
                 .expiresAt(now.plusSeconds(60 * 60))
                 .subject(user.getId().toString())

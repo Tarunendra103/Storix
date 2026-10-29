@@ -10,10 +10,13 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.ContentDisposition;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -31,15 +34,6 @@ public class FileController {
         Long userId = Long.parseLong(authentication.getName());
         return ResponseEntity.ok(fileService.getAllFiles(userId));
     }
-
-//    @PostMapping
-//    public ResponseEntity<FileResponse> createFile(
-//            @Valid @RequestBody FileRequest fileRequest,Authentication authentication){
-//        Long userId = Long.parseLong(authentication.getName());
-//        return ResponseEntity
-//                .status(HttpStatus.CREATED)
-//                .body(fileService.createFile(fileRequest,userId));
-//    }
 
     @GetMapping("/{id}")
     public ResponseEntity<FileResponse> getFileById(
@@ -70,38 +64,70 @@ public class FileController {
     }
 
     @PostMapping("/sync")
-    public ResponseEntity<Void> syncFiles(
+    public ResponseEntity<SyncResponse> syncFiles(
             Authentication authentication
     ) {
         Long userId = Long.parseLong(authentication.getName());
 
-        fileService.syncGoogleDriveFiles(userId);
+        SyncResponse result = fileService.syncGoogleDriveFiles(userId);
 
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<byte[]> downloadFile(
+    public ResponseEntity<StreamingResponseBody> downloadFile(
             @PathVariable Long id,
             Authentication authentication
     ) {
-
-        Long userId = Long.parseLong(authentication.getName());
-
-        File file = fileService.getFileEntity(id, userId);
-
-        byte[] data = fileService.downloadFile(id, userId);
-
-        return ResponseEntity.ok()
-                .contentType(
-                        MediaType.parseMediaType(file.getMimeType())
-                )
-                .header(
-                        HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + file.getName() + "\""
-                )
-                .body(data);
+        return contentResponse(id, authentication, false);
     }
+
+    @GetMapping("/{id}/preview")
+    public ResponseEntity<StreamingResponseBody> previewFile(@PathVariable Long id, Authentication authentication) {
+        return contentResponse(id, authentication, true);
+    }
+
+    private ResponseEntity<StreamingResponseBody> contentResponse(Long id, Authentication authentication, boolean inline) {
+        Long userId = Long.parseLong(authentication.getName());
+        File file = fileService.getFileEntity(id, userId);
+        if ("application/vnd.google-apps.folder".equalsIgnoreCase(file.getMimeType())) {
+            throw new IllegalArgumentException("Folders cannot be downloaded");
+        }
+        DownloadMetadata metadata = downloadMetadata(file);
+        StreamingResponseBody stream = outputStream -> fileService.downloadFile(id, userId, outputStream);
+        ContentDisposition disposition = (inline ? ContentDisposition.inline() : ContentDisposition.attachment())
+                .filename(metadata.fileName(), StandardCharsets.UTF_8).build();
+        return ResponseEntity.ok()
+                .contentType(metadata.mediaType())
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+                .body(stream);
+    }
+
+    private DownloadMetadata downloadMetadata(File file) {
+        String originalMimeType = file.getMimeType();
+        String fileName = file.getName();
+        if ("application/vnd.google-apps.document".equals(originalMimeType)) {
+            return new DownloadMetadata(MediaType.APPLICATION_PDF, withExtension(fileName, ".pdf"));
+        }
+        if ("application/vnd.google-apps.spreadsheet".equals(originalMimeType)) {
+            return new DownloadMetadata(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), withExtension(fileName, ".xlsx"));
+        }
+        if ("application/vnd.google-apps.presentation".equals(originalMimeType)) {
+            return new DownloadMetadata(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation"), withExtension(fileName, ".pptx"));
+        }
+        try {
+            return new DownloadMetadata(originalMimeType == null ? MediaType.APPLICATION_OCTET_STREAM : MediaType.parseMediaType(originalMimeType), fileName);
+        } catch (IllegalArgumentException ignored) {
+            return new DownloadMetadata(MediaType.APPLICATION_OCTET_STREAM, fileName);
+        }
+    }
+
+    private String withExtension(String fileName, String extension) {
+        return fileName != null && fileName.toLowerCase().endsWith(extension) ? fileName : fileName + extension;
+    }
+
+    private record DownloadMetadata(MediaType mediaType, String fileName) { }
 
 
 
@@ -112,6 +138,7 @@ public class FileController {
     public ResponseEntity<FileResponse> uploadFile(
             @RequestParam Long connectedAccountId,
             @RequestParam MultipartFile file,
+            @RequestParam(required = false) Long parentId,
             Authentication authentication
     ) {
 
@@ -122,12 +149,25 @@ public class FileController {
                 fileService.uploadFile(
                         userId,
                         connectedAccountId,
-                        file
+                        file,
+                        parentId
                 );
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(response);
+    }
+
+    @PostMapping("/folders")
+    public ResponseEntity<FileResponse> createFolder(
+            @RequestParam Long connectedAccountId,
+            @RequestParam String name,
+            @RequestParam(required = false) Long parentId,
+            Authentication authentication
+    ) {
+        Long userId = Long.parseLong(authentication.getName());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(fileService.createFolder(userId, connectedAccountId, name, parentId));
     }
 
     @GetMapping("/search")
@@ -148,7 +188,7 @@ public class FileController {
     @GetMapping("/folder")
     public ResponseEntity<List<FileResponse>> getFolderFiles(
             @RequestParam Long connectedAccountId,
-            @RequestParam String providerFolderId,
+            @RequestParam(required = false) String providerFolderId,
             Authentication authentication
     ) {
 

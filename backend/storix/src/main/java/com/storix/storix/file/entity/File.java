@@ -9,6 +9,16 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
+@Table(
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_file_connected_account_provider_file",
+                columnNames = {"connected_account_id", "provider_file_id"}
+        ),
+        indexes = {
+                @Index(name = "idx_file_user_account", columnList = "user_id,connected_account_id"),
+                @Index(name = "idx_file_user_category", columnList = "user_id,category")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor
