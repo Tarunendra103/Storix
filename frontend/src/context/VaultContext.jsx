@@ -215,6 +215,9 @@ export function VaultProvider({ children }) {
     const failedIds = results.filter((result) => !result.deleted).map((result) => result.fileId);
     if (deletedIds.length) {
       setFiles((current) => current.filter((file) => !deletedIds.includes(file.id)));
+      if (inspectorFile && deletedIds.includes(inspectorFile.id)) {
+        setInspectorFile(files.find((file) => !deletedIds.includes(file.id)) || null);
+      }
       const updatedStorage = await api.getStorageOverview();
       setStorageOverview(updatedStorage);
     }

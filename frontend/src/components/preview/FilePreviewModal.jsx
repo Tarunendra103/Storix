@@ -4,6 +4,7 @@ import { PdfPreview } from './PdfPreview';
 import { ImagePreview } from './ImagePreview';
 import { VideoPreview } from './VideoPreview';
 import { UnsupportedPreview } from './UnsupportedPreview';
+import { TextPreview } from './TextPreview';
 import { formatBytes, getProviderBadge, getFileExtension } from '../../utils/fileUtils';
 import { fileApi } from '../../services/fileApi';
 
@@ -19,9 +20,13 @@ export function FilePreviewModal() {
 function getInitialMode(f) {
   if (!f) return 'pdf';
   const ext = getFileExtension(f.name);
-  if (f.category === 'photos' || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'image';
-  if (f.category === 'videos' || ['mp4', 'mov', 'avi', 'mkv'].includes(ext)) return 'video';
-  if (['pdf'].includes(ext)) return 'pdf';
+  const mimeType = (f.mimeType || '').toLowerCase();
+  if (mimeType.startsWith('image/') || f.category === 'photos' || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'image';
+  if (mimeType.startsWith('video/') || f.category === 'videos' || ['mp4', 'mov', 'avi', 'mkv'].includes(ext)) return 'video';
+  // Google Docs are exported to PDF by the backend preview endpoint.
+  if (mimeType === 'application/pdf' || mimeType === 'application/vnd.google-apps.document' || ext === 'pdf') return 'pdf';
+  if (mimeType.startsWith('text/') || ['application/json', 'application/xml', 'application/javascript'].includes(mimeType)
+    || ['txt', 'md', 'csv', 'json', 'xml', 'yaml', 'yml', 'log', 'js', 'css', 'html'].includes(ext)) return 'text';
   return 'unsupported';
 }
 
@@ -139,6 +144,7 @@ function FilePreviewModalContent({ file, onClose }) {
           {activeMode === 'pdf' && <PdfPreview file={file} />}
           {activeMode === 'image' && <ImagePreview file={file} />}
           {activeMode === 'video' && <VideoPreview file={file} />}
+          {activeMode === 'text' && <TextPreview file={file} />}
           {activeMode === 'unsupported' && <UnsupportedPreview file={file} />}
         </div>
       </div>
