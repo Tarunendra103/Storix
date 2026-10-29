@@ -106,7 +106,8 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                                     .size(file.getSize())
                                     .category(
                                             determineCategory(
-                                                    file.getMimeType()
+                                                    file.getMimeType(),
+                                                    file.getName()
                                             )
                                     )
                                     .providerFolderId(
@@ -135,31 +136,44 @@ public class GoogleDriveProvider implements CloudStorageProvider {
             );
         }
     }
-    private String determineCategory(String mimeType) {
+    private String determineCategory(String mimeType, String name) {
 
-        if (mimeType == null) {
-            return "OTHER";
-        }
-
-        if (mimeType.startsWith("image/")) {
-            return "PHOTOS";
-        }
-
-        if (mimeType.startsWith("video/")) {
-            return "VIDEOS";
-        }
-
-        if (mimeType.startsWith("text/")
-                || mimeType.contains("pdf")
-                || mimeType.contains("document")
-                || mimeType.contains("spreadsheet")
-                || mimeType.contains("presentation")) {
-            return "DOCUMENTS";
-        }
-
-        if (mimeType.equals(
-                "application/vnd.google-apps.folder")) {
+        if (mimeType != null && mimeType.equals("application/vnd.google-apps.folder")) {
             return "FOLDERS";
+        }
+
+        if (mimeType != null) {
+            if (mimeType.startsWith("image/")) {
+                return "PHOTOS";
+            }
+            if (mimeType.startsWith("video/")) {
+                return "VIDEOS";
+            }
+            if (mimeType.startsWith("text/")
+                    || mimeType.contains("pdf")
+                    || mimeType.contains("document")
+                    || mimeType.contains("spreadsheet")
+                    || mimeType.contains("presentation")
+                    || mimeType.contains("msword")
+                    || mimeType.contains("excel")
+                    || mimeType.contains("powerpoint")
+                    || mimeType.contains("opendocument")) {
+                return "DOCUMENTS";
+            }
+        }
+
+        // Check file extension if MIME type is generic or missing
+        if (name != null && name.contains(".")) {
+            String ext = name.substring(name.lastIndexOf('.') + 1).toLowerCase();
+            if (ext.matches("jpg|jpeg|png|gif|webp|svg|bmp|tiff|heic")) {
+                return "PHOTOS";
+            }
+            if (ext.matches("mp4|mov|avi|mkv|webm|wmv|flv|m4v")) {
+                return "VIDEOS";
+            }
+            if (ext.matches("pdf|doc|docx|xls|xlsx|ppt|pptx|txt|rtf|csv|md|odt|ods|odp")) {
+                return "DOCUMENTS";
+            }
         }
 
         return "OTHER";
@@ -200,15 +214,36 @@ public class GoogleDriveProvider implements CloudStorageProvider {
             java.io.ByteArrayOutputStream outputStream =
                     new java.io.ByteArrayOutputStream();
 
-            drive.files()
-                    .get(providerFileId)
-                    .executeMediaAndDownloadTo(outputStream);
+            File metadata = drive.files().get(providerFileId)
+                    .setFields("id, name, mimeType")
+                    .execute();
+
+            String mimeType = metadata.getMimeType();
+
+            if (mimeType != null && mimeType.startsWith("application/vnd.google-apps.")) {
+                String exportMimeType = "application/pdf";
+                if (mimeType.contains("spreadsheet")) {
+                    exportMimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                } else if (mimeType.contains("presentation")) {
+                    exportMimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+                } else if (mimeType.contains("document")) {
+                    exportMimeType = "application/pdf";
+                }
+
+                drive.files()
+                        .export(providerFileId, exportMimeType)
+                        .executeMediaAndDownloadTo(outputStream);
+            } else {
+                drive.files()
+                        .get(providerFileId)
+                        .executeMediaAndDownloadTo(outputStream);
+            }
 
             return outputStream.toByteArray();
 
         } catch (IOException e) {
             throw new RuntimeException(
-                    "Failed to download Google Drive file",
+                    "Failed to download Google Drive file: " + e.getMessage(),
                     e
             );
         }
@@ -300,7 +335,8 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     .size(uploadedFile.getSize())
                     .category(
                             determineCategory(
-                                    uploadedFile.getMimeType()
+                                    uploadedFile.getMimeType(),
+                                    uploadedFile.getName()
                             )
                     )
                     .providerFolderId(
@@ -447,20 +483,26 @@ public class GoogleDriveProvider implements CloudStorageProvider {
                     )
                     .execute();
 
-            return result.getFiles()
+            List<com.google.api.services.drive.model.File> driveFiles = result.getFiles();
+            if (driveFiles == null) {
+                return new ArrayList<>();
+            }
+
+            return driveFiles
                     .stream()
-                    .map(file -> ProviderFile.builder()
+                    .map((com.google.api.services.drive.model.File file) -> ProviderFile.builder()
                             .providerFileId(file.getId())
                             .name(file.getName())
                             .mimeType(file.getMimeType())
                             .size(file.getSize())
                             .category(
                                     determineCategory(
-                                            file.getMimeType()
+                                            file.getMimeType(),
+                                            file.getName()
                                     )
                             )
                             .providerFolderId(
-                                    file.getParents() != null
+                                    file.getParents() != null && !file.getParents().isEmpty()
                                             ? file.getParents().get(0)
                                             : null
                             )

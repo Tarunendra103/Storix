@@ -92,13 +92,40 @@ public class FileController {
 
         byte[] data = fileService.downloadFile(id, userId);
 
+        String originalMimeType = file.getMimeType();
+        MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        String fileName = file.getName();
+
+        if (originalMimeType != null) {
+            if (originalMimeType.equals("application/vnd.google-apps.document")) {
+                mediaType = MediaType.APPLICATION_PDF;
+                if (!fileName.toLowerCase().endsWith(".pdf")) {
+                    fileName += ".pdf";
+                }
+            } else if (originalMimeType.equals("application/vnd.google-apps.spreadsheet")) {
+                mediaType = MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                if (!fileName.toLowerCase().endsWith(".xlsx")) {
+                    fileName += ".xlsx";
+                }
+            } else if (originalMimeType.equals("application/vnd.google-apps.presentation")) {
+                mediaType = MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation");
+                if (!fileName.toLowerCase().endsWith(".pptx")) {
+                    fileName += ".pptx";
+                }
+            } else {
+                try {
+                    mediaType = MediaType.parseMediaType(originalMimeType);
+                } catch (Exception ignored) {
+                    mediaType = MediaType.APPLICATION_OCTET_STREAM;
+                }
+            }
+        }
+
         return ResponseEntity.ok()
-                .contentType(
-                        MediaType.parseMediaType(file.getMimeType())
-                )
+                .contentType(mediaType)
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + file.getName() + "\""
+                        "attachment; filename=\"" + fileName + "\""
                 )
                 .body(data);
     }
